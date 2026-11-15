@@ -25,10 +25,10 @@ python -m pip install -e .
 PYTHONPATH=src python3 -m unittest discover -s tests -t .
 
 # 真实账本副本端到端（涉及写入/恢复/外部变化时）
-PYTHONPATH=src python3 scripts/e2e_testassets.py
+PYTHONPATH=src python3 scripts/e2e_testassets.py --source /path/to/TestAssets
 ```
 
-E2E 只操作 `/home/dhr2333/Syncthing/Bill/TestAssets` 的临时副本；**不得**修改原目录。没有该账本时在 PR 中说明跳过原因。
+E2E 只操作 `--source` 指定账本的临时副本；**不得**修改原目录。没有脱敏 TestAssets 账本时在 PR 中说明跳过原因。
 
 ## 提交前检查
 
@@ -50,7 +50,7 @@ E2E 只操作 `/home/dhr2333/Syncthing/Bill/TestAssets` 的临时副本；**不�
 
 - 设计文档见 `docs/design/`；文档规则见 `AGENTS.md`。
 - 发布流程见 `docs/release-checklist.md`；版本记录见 `CHANGELOG.md`。
-- 当前 CI 为 Jenkins：<https://jenkins.dhr2333.cn/job/LedgerKernel/>。合并前至少保证 `main` 构建为绿。
+- 当前 CI 为内部 Jenkins。合并前至少保证 `main` 构建为绿。
 
 ## 安全边界
 

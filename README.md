@@ -6,7 +6,7 @@
 
 > 本仓库是 v0.1 原型实现，对应设计库中的《顶层设计摘要》《本地账户内核_v0.1_工程决策冻结与原型实施计划》《本地账户内核_v0.1_设计规格草案》与 ADR-012/ADR-013。实现覆盖 P0-A～P0-D 及薄 MCP 适配器（P0-E 的最小工具集）。
 
-CI：[Jenkins](https://jenkins.dhr2333.cn/job/LedgerKernel/) · 开发约定：[CONTRIBUTING.md](CONTRIBUTING.md) · Agent 约定：[AGENTS.md](AGENTS.md) · 发布流程：[release-checklist](docs/release-checklist.md) · 版本记录：[CHANGELOG.md](CHANGELOG.md)
+CI：Jenkins（内部）· 开发约定：[CONTRIBUTING.md](CONTRIBUTING.md) · Agent 约定：[AGENTS.md](AGENTS.md) · 发布流程：[release-checklist](docs/release-checklist.md) · 版本记录：[CHANGELOG.md](CHANGELOG.md)
 
 ## 不是什么
 
@@ -21,7 +21,8 @@ CI：[Jenkins](https://jenkins.dhr2333.cn/job/LedgerKernel/) · 开发约定：[
 要求 Python ≥ 3.11、Beancount 3.2.x。
 
 ```bash
-cd /home/dhr2333/GitHub/LedgerKernel
+git clone git@github.com:dhr2333/LedgerKernel.git
+cd LedgerKernel
 python3 -m pip install -e .
 # 或者不安装，使用 PYTHONPATH=src
 
@@ -240,7 +241,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests -t .
 真实账本端到端（在 TestAssets 脱敏副本上执行，不改原目录）：
 
 ```bash
-PYTHONPATH=src python3 scripts/e2e_testassets.py
+PYTHONPATH=src python3 scripts/e2e_testassets.py --source /path/to/TestAssets
 ```
 
 ## 已知限制（v0.1 如实声明）
@@ -279,7 +280,7 @@ src/ledger_kernel/
 
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -t . -v
-PYTHONPATH=src python3 scripts/e2e_testassets.py
+PYTHONPATH=src python3 scripts/e2e_testassets.py --source /path/to/TestAssets
 ```
 
 测试不依赖 pytest；只依赖 `beancount` 与 `PyYAML`。测试全部在临时目录中运行，不会修改真实账本。

@@ -31,7 +31,7 @@
 
 - 新增/修改行为有对应测试；测试仍使用标准库 `unittest`。
 - 本地通过：`PYTHONPATH=src python3 -m unittest discover -s tests -t .`
-- 涉及写入、恢复、外部变化的改动，额外跑：`PYTHONPATH=src python3 scripts/e2e_testassets.py`（没有 TestAssets 时说明跳过原因）。
+- 涉及写入、恢复、外部变化的改动，额外跑：`PYTHONPATH=src python3 scripts/e2e_testassets.py --source <TestAssets>`（没有 TestAssets 时说明跳过原因）。
 - 公共行为变化已更新文档；决策变化已记录 ADR。
 - `git status` 只包含本次相关文件；不顺手整理无关内容。
 - 不提交 `.venv/`、`__pycache__/`、构建产物或临时账本。

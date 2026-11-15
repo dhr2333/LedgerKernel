@@ -6,7 +6,7 @@
 
 - [ ] `main` 最新，工作区干净，Jenkins `main` 构建为绿。
 - [ ] `PYTHONPATH=src python3 -m unittest discover -s tests -t .` 全部通过。
-- [ ] 涉及写入/恢复/外部变化的改动已跑 `PYTHONPATH=src python3 scripts/e2e_testassets.py`。
+- [ ] 涉及写入/恢复/外部变化的改动已跑 `PYTHONPATH=src python3 scripts/e2e_testassets.py --source <TestAssets>`。
 - [ ] 在至少一份真实账本副本上完成：提交、外部修改、旧草稿失效、恢复/拒绝提交。
 - [ ] Beancount 版本范围未变；如变更，已跑真实账本回归并更新 engine fingerprint 说明。
 - [ ] 版本号同时更新：`pyproject.toml`、`src/ledger_kernel/__init__.py`。

@@ -22,7 +22,6 @@ from beancount.core import data
 
 from ledger_kernel.kernel import Kernel
 
-DEFAULT_SOURCE = Path("/home/dhr2333/Syncthing/Bill/TestAssets")
 TARGET = "transactions/kernel-import.bean"
 
 
@@ -66,7 +65,12 @@ def choose_accounts(root: Path) -> tuple[str, str, dt.date]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
+    parser.add_argument(
+        "--source",
+        type=Path,
+        required=True,
+        help="path to a desensitized TestAssets ledger directory",
+    )
     parser.add_argument("--keep", action="store_true")
     args = parser.parse_args()
 
