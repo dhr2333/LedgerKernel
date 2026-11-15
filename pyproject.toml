@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ledger-kernel"
+version = "0.1.0"
+description = "Local account kernel for Beancount ledgers: proposal, dry-run, human approval, controlled append, audit and recovery."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "LedgerKernel" }]
+dependencies = [
+  "beancount>=3.2,<4",
+  "PyYAML>=6.0",
+]
+
+[project.scripts]
+ledger-kernel = "ledger_kernel.cli:main"
+ledger-kernel-mcp = "ledger_kernel.mcp_server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ledger_kernel = ["py.typed"]
