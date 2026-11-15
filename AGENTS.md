@@ -23,7 +23,7 @@
 按“行为是否变化”触发，不做逐次强制：
 
 - 公共 API、CLI、配置、schema、安装方式变化 → 更新 `README.md` 与相关 docstring。
-- 安全不变量、不可逆决策、兼容性边界变化 → 新增/修订 ADR（库外设计库中的 ADR，或本仓库 `docs/adr/`）。
+- 安全不变量、不可逆决策、兼容性边界变化 → 新增/修订 ADR（本仓库 `docs/design/adr/`，或库外设计库）。
 - 仅内部重构、测试补充、注释修正 → 不要求更新 README。
 - 发布相关 → 更新 `CHANGELOG.md` 并按 `docs/release-checklist.md` 执行。
 

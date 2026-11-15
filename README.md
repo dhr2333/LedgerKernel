@@ -132,6 +132,17 @@ Claude Desktop / DSH 等客户端配置示例：
 9. **已知转移**：只有“当前 revision = 旧 manifest 仅替换 `write_target` 为某条 COMMITTED journal 的 after_hash”才视为内核自身提交；其他一律按外部变化。批量批准可在 `review_digest` 不变时沿用批准（`ApprovalCarriedForward`），不跳过重验。
 10. **审计链**：`events.jsonl` 每条事件带 `prev_hash` 与 `event_hash`；链损坏/为空时拒绝提交（`AUDIT_INTEGRITY`）。
 
+## 设计文档
+
+- [设计文档索引](docs/design/README.md)
+- [顶层设计摘要](docs/design/design-summary.md)
+- [v0.1 设计规格](docs/design/v0.1-spec.md)
+- [v0.1 工程决策冻结与原型实施计划](docs/design/v0.1-implementation-plan.md)
+- [v0.1 实施完成记录](docs/design/v0.1-implementation-report.md)
+- ADR：[ADR-012 增量断言](docs/design/adr/ADR-012-delta-assertion.md)、[ADR-013 已知转移](docs/design/adr/ADR-013-known-transition.md)
+
+这些文档描述 v0.1 原型基线；与代码行为冲突时，以 README、测试和最新 ADR 为准。
+
 ## `.ledger-kernel/` 布局
 
 ```text

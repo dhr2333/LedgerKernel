@@ -48,7 +48,7 @@ E2E 只操作 `/home/dhr2333/Syncthing/Bill/TestAssets` 的临时副本；**不�
 
 ## 文档与发布
 
-- 文档规则见 `AGENTS.md`。
+- 设计文档见 `docs/design/`；文档规则见 `AGENTS.md`。
 - 发布流程见 `docs/release-checklist.md`；版本记录见 `CHANGELOG.md`。
 - 当前 CI 为 Jenkins：<https://jenkins.dhr2333.cn/job/LedgerKernel/>。合并前至少保证 `main` 构建为绿。
 
