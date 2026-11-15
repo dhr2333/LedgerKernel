@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Local account kernel for Beancount ledgers: proposal, dry-run, human approval, controlled append, audit and recovery."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
 authors = [{ name = "LedgerKernel" }]
 dependencies = [
   "beancount>=3.2,<4",

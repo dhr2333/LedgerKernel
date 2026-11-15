@@ -22,37 +22,24 @@ pipeline {
             }
         }
 
-        stage('Python 环境') {
+        stage('测试与 CLI 冒烟') {
             steps {
                 sh '''
-                    set -eux
-                    python3 --version
-                    python3 -m venv .venv
-                    . .venv/bin/activate
-                    python -m pip install --upgrade pip
-                    python -m pip install -e .
-                    python -c "import beancount, yaml; print('beancount', beancount.__version__); print('pyyaml', yaml.__version__)"
-                '''
-            }
-        }
-
-        stage('测试') {
-            steps {
-                sh '''
-                    set -eux
-                    . .venv/bin/activate
-                    python -m unittest discover -s tests -t . -v
-                '''
-            }
-        }
-
-        stage('CLI 冒烟') {
-            steps {
-                sh '''
-                    set -eux
-                    . .venv/bin/activate
-                    ledger-kernel --version
-                    ledger-kernel --help > /dev/null
+                    set -eu
+                    # Jenkins 容器内没有 Python；把工作区通过 tar 流送进
+                    # 一次性 Python 容器，避免依赖宿主路径或全局安装。
+                    tar --exclude=.git --exclude=.venv --exclude='__pycache__' -cf - . \
+                      | docker run --rm -i python:3.12-slim bash -lc '
+                          set -eux
+                          mkdir -p /workspace
+                          tar -xf - -C /workspace
+                          cd /workspace
+                          python -m pip install --upgrade pip
+                          python -m pip install -e .
+                          python -m unittest discover -s tests -t . -v
+                          ledger-kernel --version
+                          ledger-kernel --help > /dev/null
+                        '
                 '''
             }
         }
