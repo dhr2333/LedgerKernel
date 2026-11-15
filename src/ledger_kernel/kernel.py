@@ -175,7 +175,11 @@ class Kernel:
             "contract_revision": contract_revision(self.config.contracts_path),
             "engine_fingerprint": load.engine_fingerprint,
             "manifest": load.manifest,
-            "status": "Clean" if load.ok else "LedgerInvalid",
+            "status": (
+                "RecoveryRequired"
+                if self._pending_journals_locked()
+                else ("Clean" if load.ok else "LedgerInvalid")
+            ),
             "last_scan_at": now_iso(),
             "last_load_ok": load.ok,
             "last_errors": load.error_records(load.errors)[:50],
@@ -1170,8 +1174,8 @@ class Kernel:
             observation = self.store.load_observation(observation_id)
             diff = None
             if observation.get("diff_ref"):
-                path = self.config.ledger_dir / observation["diff_ref"]
-                if path.exists():
+                path = (self.config.ledger_dir / str(observation["diff_ref"])).resolve()
+                if is_within(self.config.ledger_dir, path) and path.exists():
                     diff = path.read_text(encoding="utf-8")
             return {"observation": observation, "diff": diff}
 

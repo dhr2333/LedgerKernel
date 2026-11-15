@@ -232,6 +232,7 @@ PYTHONPATH=src python3 scripts/e2e_testassets.py
 
 ## 已知限制（v0.1 如实声明）
 
+- **平台**：当前锁与目录 `fsync` 实现面向 POSIX（`fcntl.flock`）；Windows 需替换锁实现后再用。
 - **并发**：`flock` 只协调内核写入。普通编辑器不遵守锁；最后 hash 检查与 `os.replace` 之间仍存在理论竞态窗口。v0.1 降低窗口、检测前后漂移，但不承诺对不配合的进程实现通用 compare-and-swap。
 - **归因**：只证明内容变化；不证明操作者。`source_kind` 固定为 `external_unknown`、`attribution_confidence=unknown`，不虚构 Agent/用户身份；尚未实现 Git/OS audit 佐证接入。
 - **插件**：账本插件是用户信任的代码执行环境。Dry-run 会在临时目录执行同一插件配置；依赖绝对路径或外部副作用的插件可能与真实加载不完全等价。Agent 不能指定插件。

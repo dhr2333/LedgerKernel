@@ -43,6 +43,18 @@ class AdapterTests(unittest.TestCase):
                 BeancountAdapter(base).load(root)
             self.assertEqual(caught.exception.code, "CLOSURE_INCONSISTENT")
 
+    def test_symlinked_write_target_is_rejected(self) -> None:
+        from ledger_kernel.kernel import Kernel
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_ledger(Path(tmp))
+            target = Path(tmp) / "transactions" / "kernel-import.bean"
+            target.unlink()
+            target.symlink_to(Path(tmp) / "transactions" / "2026.bean")
+            with self.assertRaises(KernelError) as caught:
+                Kernel.init(root, "transactions/kernel-import.bean")
+            self.assertIn(caught.exception.code, {"WRITE_TARGET_INVALID", "CLOSURE_INCONSISTENT"})
+
     def test_beancount_errors_are_reported_with_source(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = make_ledger(Path(tmp), invalid=True)

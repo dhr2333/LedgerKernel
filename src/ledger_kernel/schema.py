@@ -243,7 +243,7 @@ def _parse_evidence(raw: Any, index: int) -> ParsedEvidence:
     kind = evidence.get("kind")
     if kind not in {"file", "text", "external"}:
         raise KernelError(SCHEMA_INVALID, "evidence.kind must be file, text or external")
-    locator = _check_display_text(evidence.get("locator"), "evidence.locator", 500)
+    locator = _check_text(evidence.get("locator"), "evidence.locator", 500)
     sha = evidence.get("sha256")
     if sha is not None:
         if not isinstance(sha, str) or not _HEX64_RE.match(sha):

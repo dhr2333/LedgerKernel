@@ -44,6 +44,8 @@ class ObservationTests(unittest.TestCase):
         self.assertEqual(observation["changed_files"], ["accounts.bean"])
         self.assertFalse(observation["diff_unavailable"])
         self.assertEqual(observation["ledger_load_status"], "valid")
+        detail = restarted.get_observation(observation["observation_id"])
+        self.assertIn("+2026-02-01 open Expenses:New CNY", detail["diff"])
 
     def test_invalid_external_edit_blocks_controlled_commits(self) -> None:
         draft_id = self.prepare_approved(key="invalid", narration="Lunch", amount="1.00", date="2026-01-02")

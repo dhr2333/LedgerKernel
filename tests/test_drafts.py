@@ -50,6 +50,24 @@ class DraftFlowTests(unittest.TestCase):
         self.assertEqual(self.target.read_text(encoding="utf-8").count("Lunch"), 1)
         self.assertIn(result["commit_id"], (self.base / ".ledger-kernel" / "journal" / f"{result['commit_id']}.json").read_text())
 
+    def test_multi_transaction_draft_commits_both(self) -> None:
+        import copy
+
+        body = payload()
+        second = copy.deepcopy(body["transactions"][0])
+        second["date"] = "2026-01-03"
+        second["narration"] = "Dinner"
+        body["transactions"].append(second)
+        draft_id = self.kernel.submit_draft(body, "multi", agent_id="a")["draft"]["draft_id"]
+        validation = self.kernel.validate_draft(draft_id)
+        self.assertEqual(validation["status"], "pass")
+        self.assertEqual(len(validation["diff"]["postings"]), 4)
+        self.kernel.approve_draft(draft_id)
+        self.kernel.commit_draft(draft_id)
+        text = self.target.read_text(encoding="utf-8")
+        self.assertEqual(text.count("Lunch"), 1)
+        self.assertEqual(text.count("Dinner"), 1)
+
     def test_unbalanced_transaction_is_blocked_by_beancount(self) -> None:
         body = payload()
         body["transactions"][0]["postings"][1]["units"] = "-20.00"
@@ -90,6 +108,16 @@ class DraftFlowTests(unittest.TestCase):
             self.kernel.approve_draft(draft_id)
         self.assertIn(caught.exception.code, {"STALE_REVISION", "INVALID_STATE"})
         self.assertTrue(self.kernel.get_draft(draft_id)["workflow"]["stale"])
+
+    def test_batch_approve_api(self) -> None:
+        first = self.kernel.submit_draft(payload(narration="One"), "batch-1", agent_id="a")["draft"]["draft_id"]
+        second = self.kernel.submit_draft(payload(narration="Two"), "batch-2", agent_id="a")["draft"]["draft_id"]
+        self.kernel.validate_draft(first)
+        self.kernel.validate_draft(second)
+        results = self.kernel.approve_drafts([first, second])
+        self.assertEqual(len(results), 2)
+        self.assertEqual(self.kernel.get_draft(first)["workflow"]["state"], "Approved")
+        self.assertEqual(self.kernel.get_draft(second)["workflow"]["state"], "Approved")
 
     def test_reject_and_withdraw(self) -> None:
         draft_id = self.submit()["draft"]["draft_id"]

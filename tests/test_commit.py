@@ -111,6 +111,14 @@ class CommitTests(unittest.TestCase):
         events = [event["event_type"] for event in self.kernel.audit_tail(200)]
         self.assertIn("CorrectionProposed", events)
 
+    def test_deleted_audit_log_blocks_commit(self) -> None:
+        draft_id = self.prepared("audit-deleted")
+        (self.base / ".ledger-kernel" / "audit" / "events.jsonl").unlink()
+        with self.assertRaises(KernelError) as caught:
+            self.kernel.commit_draft(draft_id)
+        self.assertEqual(caught.exception.code, "AUDIT_INTEGRITY")
+        self.assertNotIn("Lunch", self.target.read_text(encoding="utf-8"))
+
     def test_crash_before_replace_leaves_approval_usable(self) -> None:
         def crash(name, data):
             if name == "before_replace":

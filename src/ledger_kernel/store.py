@@ -199,6 +199,12 @@ class Store:
             return {"ok": False, "event_count": 0, "error": exc.message}
         if not events:
             return {"ok": False, "event_count": 0, "error": "audit log is empty"}
+        if events[0].get("event_type") != "KernelInitialized":
+            return {
+                "ok": False,
+                "event_count": len(events),
+                "error": "audit log does not start with KernelInitialized",
+            }
         previous = GENESIS_HASH
         for index, event in enumerate(events, start=1):
             actual = event.get("event_hash")
