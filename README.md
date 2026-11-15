@@ -6,6 +6,8 @@
 
 > 本仓库是 v0.1 原型实现，对应设计库中的《顶层设计摘要》《本地账户内核_v0.1_工程决策冻结与原型实施计划》《本地账户内核_v0.1_设计规格草案》与 ADR-012/ADR-013。实现覆盖 P0-A～P0-D 及薄 MCP 适配器（P0-E 的最小工具集）。
 
+CI：[Jenkins](https://jenkins.dhr2333.cn/job/LedgerKernel/) · 开发约定：[CONTRIBUTING.md](CONTRIBUTING.md) · Agent 约定：[AGENTS.md](AGENTS.md) · 发布流程：[release-checklist](docs/release-checklist.md) · 版本记录：[CHANGELOG.md](CHANGELOG.md)
+
 ## 不是什么
 
 - 不是记账 App、预算工具、消费分析仪表盘。
