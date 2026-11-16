@@ -265,6 +265,23 @@ ledger-kernel accounts reconciliation revert rec_... --reason "余额抄错" --c
 - `state.json.reconciliations` 是可重建缓存；缺失或损坏时从审计事件重建，读取以审计链为准。
 - `accounts reconcile` / `accounts reconciliation revert` 要求 `--confirm` 等于账户名 / `reconciliation_id`，非交互模式不会自动确认；MCP 不暴露对账写入口。
 
+### 按账户审核（v0.2）
+
+账户级审核是**只读分组视图**，不引入账户级批准对象（ADR-020）：
+
+```bash
+ledger-kernel review --by-account                   # 按账户聚合待审草稿
+ledger-kernel review --account Assets:Bank:Checking # 只看该账户；即使没有待审草稿也显示该组
+ledger-kernel review --by-account --state Approved   # --state 过滤仍先生效
+```
+
+- 分组规则：默认只出现“有 pending 草稿（沿用 `review` 队列的状态集合）的账户”；一条草稿会出现在它 `account_refs` 里的每个账户分组下。`--account` 即使该账户没有待审草稿也显示一个组。
+- 每组字段（`--json` 输出的 `groups[]`）：`account`、`lifecycle`（生命周期）、`balances`（余额）、`reconciliation`（`status` / `next_due` / `difference_status`，含最近一条有效记录）、`contract`（有契约时为 `aliases` / `allowed_agents` / `allowed_currencies` / `allowed_tags` / `required_tags` / `reconciliation` / `balance_policy`，无契约时为 `null`）、`pending_drafts`（`draft_id` / `date` / `amount` / `currency` / `narration` / `state` / `validation_status`）、`warnings`（草稿 latest validation 中的 `CONTRACT_*` warning，按检查的 `account` 归入对应账户组，没有 `account` 的检查归入草稿出现的组；只含 `severity: "warning"`，不会复制成阻断）、`draft_count`。
+- 顶层 JSON：`mode: "by_account"`、`account`（过滤账户或 `null`）、`note`（通常为 `null`；未知账户时说明原因）、`groups`。文本输出每组一行 `== 账户 生命周期 余额 reconciliation 状态（next_due）` 头部，随后是 contract 摘要行、待审行与 warning 行；空组显示 `pending: none`，无契约组显示 `contract: none`。
+- 未知账户（账本、契约与所有草稿中都未出现）：返回 `groups: []` 且 `note` 为 `unknown account: <name>`，不返回错误码；文本输出该 note。
+- **批准绑定不变**：`review --by-account --approve` 在没有显式 draft_id 列表时仍返回 `INVALID_STATE`；有显式 draft_id 与 `--confirm` 时走与 v0.1 相同的逐 draft 批准路径，仍绑定 `draft_id + validation_id + ledger_revision + contract_revision`，新增审计事件仍只有逐 draft 的 `DraftApproved`。不提供“按账户一键批准”；不带 `--approve` 时分组视图与显式 draft_id 参数互斥（同时给出返回 `INVALID_STATE`），带 `--approve` 时仍按显式 draft_id 逐笔批准、分组开关不改变批准语义。现有 `review` 队列/逐笔详情与 `drafts approve` 行为不变。
+- 分组视图只读：不写 Ledger、不改变 `ledger_revision`、不新增审计事件或状态机状态；MCP 工具列表不变（不新增按账户审核工具）。
+
 ## 已冻结的工程决策（对应实施计划第 12 节）
 
 | 事项 | v0.1 选择 |

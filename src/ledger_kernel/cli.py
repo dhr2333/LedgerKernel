@@ -2,6 +2,9 @@
 
 Commands never auto-approve: ``drafts approve`` requires an explicit
 ``--confirm`` value (or an interactive prompt) naming the draft(s).
+
+``review --by-account`` is a read-only grouped view (ADR-020): it aggregates
+pending drafts by account but never adds an account-level approval path.
 """
 
 from __future__ import annotations
@@ -242,6 +245,53 @@ def _contracts_preview_text(preview: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _review_group_header(group: dict[str, Any]) -> str:
+    reconciliation = group["reconciliation"]
+    next_due = reconciliation.get("next_due") or "-"
+    header = (
+        f"== {group['account']}  {group['lifecycle']}  {_balances_text(group['balances'])}  "
+        f"reconciliation {reconciliation.get('status')} (next {next_due})"
+    )
+    difference = reconciliation.get("difference_status")
+    if difference not in (None, "none"):
+        header += f"  difference {difference}"
+    return header
+
+
+def _review_contract_text(contract: dict[str, Any] | None) -> str:
+    if contract is None:
+        return "   contract: none"
+    agents = ", ".join(contract.get("allowed_agents") or []) or "-"
+    currencies = ", ".join(contract.get("allowed_currencies") or []) or "-"
+    return f"   contract: yes  allowed_agents: {agents}  allowed_currencies: {currencies}"
+
+
+def _review_by_account_text(payload: dict[str, Any]) -> str:
+    if not payload["groups"]:
+        if payload.get("account"):
+            return payload.get("note") or f"no pending drafts for {payload['account']}"
+        return "no pending drafts"
+    blocks = []
+    for group in payload["groups"]:
+        lines = [_review_group_header(group), _review_contract_text(group["contract"])]
+        if group["pending_drafts"]:
+            for row in group["pending_drafts"]:
+                lines.append(
+                    f"   pending: {row['draft_id']}  {row.get('date') or '-'}  "
+                    f"{row.get('amount') or '-'} {row.get('currency') or ''}  "
+                    f"{row.get('narration') or '-'}  "
+                    f"[{row.get('state')} / {row.get('validation_status') or 'unvalidated'}]"
+                )
+        else:
+            lines.append("   pending: none")
+        for warning in group["warnings"]:
+            lines.append(
+                f"   warning: {warning['code']}  {warning['message']}  [{warning['draft_id']}]"
+            )
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ledger-kernel", description="Local account kernel for a Beancount ledger")
     parser.add_argument("--ledger", default=".", help="ledger directory containing .ledger-kernel (default: .)")
@@ -366,6 +416,15 @@ def build_parser() -> argparse.ArgumentParser:
     review = sub.add_parser("review", help="review pending drafts and approve a batch in one place")
     review.add_argument("draft_ids", nargs="*")
     review.add_argument("--state", help="limit the queue to one draft state")
+    review.add_argument(
+        "--by-account",
+        action="store_true",
+        help="group the pending queue by account (read-only; ADR-020)",
+    )
+    review.add_argument(
+        "--account",
+        help="only show the group for this account (implies --by-account; may be empty)",
+    )
     review.add_argument("--approve", action="store_true", help="approve the named drafts after confirmation")
     review.add_argument("--confirm")
     review.add_argument("--note")
@@ -415,27 +474,12 @@ def _read_contracts_candidate(path_value: str) -> str:
         ) from exc
 
 
-def _review_payload(kernel: Kernel, draft_ids: Sequence[str], state: str | None) -> dict[str, Any]:
-    """Read-only review view: pending queue or per-draft detail."""
-    if draft_ids:
-        items = []
-        for draft_id in dict.fromkeys(draft_ids):
-            entry = kernel.get_draft(draft_id)
-            validation = entry.get("validation") or {}
-            items.append(
-                {
-                    "draft_id": draft_id,
-                    "state": entry["workflow"].get("state"),
-                    "validation_status": validation.get("status"),
-                    "checks": validation.get("checks") or [],
-                    "fragment": validation.get("fragment"),
-                    "diff": validation.get("diff") or {},
-                    "draft": entry["draft"],
-                }
-            )
-        return {"mode": "detail", "drafts": items}
+_REVIEW_QUEUE_STATES = {"Submitted", "NeedsHumanApproval", "Blocked", "Approved"}
 
-    allowed = {state} if state else {"Submitted", "NeedsHumanApproval", "Blocked", "Approved"}
+
+def _review_queue_rows(kernel: Kernel, state: str | None) -> list[dict[str, Any]]:
+    """Pending queue rows shared by ``review`` and ``review --by-account``."""
+    allowed = {state} if state else _REVIEW_QUEUE_STATES
     items = []
     for row in kernel.list_drafts():
         if row["state"] not in allowed:
@@ -457,7 +501,138 @@ def _review_payload(kernel: Kernel, draft_ids: Sequence[str], state: str | None)
                 "checks": validation.get("checks") or [],
             }
         )
-    return {"mode": "queue", "drafts": items}
+    return items
+
+
+def _review_payload(kernel: Kernel, draft_ids: Sequence[str], state: str | None) -> dict[str, Any]:
+    """Read-only review view: pending queue or per-draft detail."""
+    if draft_ids:
+        items = []
+        for draft_id in dict.fromkeys(draft_ids):
+            entry = kernel.get_draft(draft_id)
+            validation = entry.get("validation") or {}
+            items.append(
+                {
+                    "draft_id": draft_id,
+                    "state": entry["workflow"].get("state"),
+                    "validation_status": validation.get("status"),
+                    "checks": validation.get("checks") or [],
+                    "fragment": validation.get("fragment"),
+                    "diff": validation.get("diff") or {},
+                    "draft": entry["draft"],
+                }
+            )
+        return {"mode": "detail", "drafts": items}
+    return {"mode": "queue", "drafts": _review_queue_rows(kernel, state)}
+
+
+def _known_review_accounts(kernel: Kernel) -> set[str]:
+    """Accounts a grouped review can describe even when no draft references them."""
+    names = {row["account"] for row in kernel.list_accounts()}
+    names.update((kernel.contracts_view().get("accounts") or {}).keys())
+    for row in kernel.list_drafts():
+        names.update(row.get("accounts") or [])
+    return names
+
+
+def _review_draft_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "draft_id": row["draft_id"],
+        "date": row.get("date"),
+        "amount": row.get("amount"),
+        "currency": row.get("currency"),
+        "narration": row.get("narration"),
+        "state": row.get("state"),
+        "validation_status": row.get("validation_status"),
+    }
+
+
+def _review_by_account_payload(
+    kernel: Kernel, *, state: str | None, account: str | None
+) -> dict[str, Any]:
+    """Read-only grouped review view (ADR-020).
+
+    Accounts are derived from the pending drafts' ``account_refs`` (a draft is
+    listed under every account it references), so grouping never creates an
+    account-level approval, state or audit event. ``--account`` shows that single
+    group even without pending drafts; an account unknown to the ledger, the
+    contracts and all drafts yields ``groups: []`` plus a stable note.
+    """
+    rows = _review_queue_rows(kernel, state)
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        for account_name in row.get("accounts") or []:
+            grouped.setdefault(account_name, []).append(row)
+
+    if account is not None:
+        if account not in grouped and account not in _known_review_accounts(kernel):
+            return {
+                "mode": "by_account",
+                "account": account,
+                "note": f"unknown account: {account}",
+                "groups": [],
+            }
+        names = [account]
+    else:
+        names = sorted(grouped)
+
+    groups: list[dict[str, Any]] = []
+    for name in names:
+        drafts = grouped.get(name, [])
+        try:
+            view = kernel.get_account(name)
+            lifecycle = view["lifecycle"]
+            balances = view["balances"]
+            reconciliation = view["reconciliation"]
+            contract = view["contract"]
+        except KernelError as exc:
+            if exc.code != "ACCOUNT_NOT_FOUND":
+                raise
+            lifecycle, balances, contract = "not_open", {}, None
+            reconciliation = {
+                "status": "not_configured",
+                "last": None,
+                "difference_status": "none",
+                "next_due": None,
+            }
+        warnings: list[dict[str, Any]] = []
+        seen: set[tuple[str, str, Any]] = set()
+        for row in drafts:
+            for check in row.get("checks") or []:
+                code = str(check.get("code") or "")
+                # Contract warnings stay advisory in this view; never copied as blocks.
+                if not code.startswith("CONTRACT_") or check.get("severity") != "warning":
+                    continue
+                # Attribute a check to the account it names instead of repeating it
+                # under every group the draft appears in.
+                if check.get("account") not in (None, name):
+                    continue
+                marker = (row["draft_id"], code, check.get("message"))
+                if marker in seen:
+                    continue
+                seen.add(marker)
+                warnings.append(
+                    {
+                        "draft_id": row["draft_id"],
+                        "code": code,
+                        "severity": check.get("severity"),
+                        "account": check.get("account"),
+                        "message": check.get("message"),
+                    }
+                )
+        groups.append(
+            {
+                "account": name,
+                "lifecycle": lifecycle,
+                "balances": balances,
+                "reconciliation": reconciliation,
+                "contract": contract,
+                "pending_drafts": [_review_draft_row(row) for row in drafts],
+                "warnings": warnings,
+                "draft_count": len(drafts),
+            }
+        )
+    return {"mode": "by_account", "account": account, "note": None, "groups": groups}
 
 
 def run(args: argparse.Namespace) -> Any:
@@ -603,6 +778,14 @@ def run(args: argparse.Namespace) -> Any:
                 raise KernelError("INVALID_STATE", "--approve requires explicit draft ids")
             _require_confirm(args.draft_ids, args.confirm)
             return {"approved": kernel.approve_drafts(args.draft_ids, note=args.note)}
+        if args.by_account or args.account is not None:
+            if args.draft_ids:
+                raise KernelError(
+                    "INVALID_STATE",
+                    "review --by-account/--account shows a grouped view; "
+                    "pass draft ids or the grouped view, not both",
+                )
+            return _review_by_account_payload(kernel, state=args.state, account=args.account)
         return _review_payload(kernel, args.draft_ids, args.state)
     if args.command == "observations":
         if args.observations_command == "list":
@@ -674,6 +857,8 @@ def _render(args: argparse.Namespace, result: Any) -> str | None:
                 f"{row['draft_id']}  {row['workflow'].get('state')}  validation={row['workflow'].get('validation_id')}"
                 for row in result["approved"]
             ) or "no drafts approved"
+        if result.get("mode") == "by_account":
+            return _review_by_account_text(result)
         drafts = result["drafts"]
         if result["mode"] == "queue":
             lines = [f"{len(drafts)} draft(s) awaiting review"]

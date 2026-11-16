@@ -269,6 +269,23 @@ ledger-kernel accounts reconciliation revert rec_... --reason "wrong balance" --
 - `state.json.reconciliations` is a rebuildable cache; when missing or corrupt it is rebuilt from audit events, and reads always take the audit chain as the truth.
 - `accounts reconcile` / `accounts reconciliation revert` require `--confirm` to equal the account name / `reconciliation_id`; non-interactive mode never auto-confirms, and MCP exposes no reconciliation write entry point.
 
+### Review by account (v0.2)
+
+Account-level review is a **read-only grouped view**; it introduces no account-level approval object (ADR-020):
+
+```bash
+ledger-kernel review --by-account                   # aggregate pending drafts by account
+ledger-kernel review --account Assets:Bank:Checking # one account; shown even without pending drafts
+ledger-kernel review --by-account --state Approved   # --state still filters first
+```
+
+- Grouping rule: by default only accounts with pending drafts (same state set as the `review` queue) appear; a draft appears under every account in its `account_refs`. `--account` shows one group even when that account has no pending drafts.
+- Group fields (`groups[]` in `--json` output): `account`, `lifecycle`, `balances`, `reconciliation` (`status` / `next_due` / `difference_status`, including the latest valid record), `contract` (`aliases` / `allowed_agents` / `allowed_currencies` / `allowed_tags` / `required_tags` / `reconciliation` / `balance_policy` when a contract exists, `null` otherwise), `pending_drafts` (`draft_id` / `date` / `amount` / `currency` / `narration` / `state` / `validation_status`), `warnings` (`CONTRACT_*` warnings from the drafts' latest validation, attributed to the account named by the check; checks without an `account` are shown in every group containing the draft; `severity: "warning"` only, never copied as blocks), and `draft_count`.
+- Top-level JSON: `mode: "by_account"`, `account` (filter account or `null`), `note` (normally `null`; explains an unknown account), and `groups`. Text output prints one `== account lifecycle balance reconciliation status (next_due)` header per group, followed by a contract summary line, pending lines, and warning lines; an empty group prints `pending: none` and a group without a contract prints `contract: none`.
+- Unknown account (absent from the ledger, contracts, and every draft): returns `groups: []` with `note` set to `unknown account: <name>` instead of an error code; text output prints that note.
+- **Approval binding is unchanged**: `review --by-account --approve` without an explicit draft_id list still returns `INVALID_STATE`; with explicit draft_ids and `--confirm` it uses the same per-draft v0.1 approval path, still bound to `draft_id + validation_id + ledger_revision + contract_revision`, and the only new audit events are per-draft `DraftApproved`. There is no "approve the whole account" shortcut; without `--approve` the grouped view and explicit draft_id arguments are mutually exclusive (giving both returns `INVALID_STATE`), and with `--approve` approval stays per explicit draft_id and the grouping switches never change approval semantics. The existing `review` queue/per-draft detail and `drafts approve` behavior is unchanged.
+- The grouped view is read-only: it never writes the ledger, does not change `ledger_revision`, and adds no audit events or state-machine states; the MCP tool list is unchanged (no review-by-account tool).
+
 ## Frozen engineering decisions (implementation plan section 12)
 
 | Item | v0.1 choice |
