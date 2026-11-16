@@ -7,6 +7,7 @@
 ### Added
 
 - 合成 fixture 账本 `tests/fixtures/ledger`：多层 include、插件、pad/balance 断言、已关闭账户与固定 `write_target`，不含真实数据。
+- 真实账本 dogfood 协议 `docs/dogfood.md`：样本、指标与 v0.2 排序判据。
 - 端到端脚本 `scripts/e2e_ledger.py` 覆盖提交、外部修改观测与 diff、草稿失效、无效账本阻断；CI 每次构建执行，并有一条 `unittest` 集成用例。
 
 ### Changed

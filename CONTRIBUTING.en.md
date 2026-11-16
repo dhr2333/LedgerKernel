@@ -55,6 +55,7 @@ E2E only operates on a temporary copy; the source directory given by `--source` 
 
 - Design documents live in `docs/design/`; documentation rules are in `AGENTS.md`.
 - The release process is in `docs/release-checklist.md`; version records are in `CHANGELOG.md`.
+- Before deciding the v0.2 scope, collect data on a real-ledger copy following `docs/dogfood.en.md`; write the conclusion into `docs/design/`.
 - CI currently runs on an internal Jenkins, triggered by a GitHub webhook on push / PR; the result appears as the `continuous-integration/jenkins/branch` commit status on commits and PRs. The `main` build must be green before merging. Webhook and job configuration: `docs/ci-github-webhook.en.md`.
 - CI runs unit/integration tests, the synthetic-fixture E2E, and a CLI smoke check; the real-ledger `--source` E2E is not executed in CI. Changes involving writes/recovery must be run locally and noted in the PR.
 

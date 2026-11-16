@@ -53,6 +53,7 @@ E2E 只操作临时副本；`--source` 指向的原目录**不得**被修改。�
 
 - 设计文档见 `docs/design/`；文档规则见 `AGENTS.md`。
 - 发布流程见 `docs/release-checklist.md`；版本记录见 `CHANGELOG.md`。
+- v0.2 范围决策前，按 `docs/dogfood.md` 在真实账本副本上收集数据；结论写入 `docs/design/`。
 - 当前 CI 为内部 Jenkins，由 GitHub webhook 在 push / PR 时触发；结果以 commit status `continuous-integration/jenkins/branch` 显示在 commit 和 PR 上。合并前至少保证 `main` 构建为绿。webhook 与 job 配置见 `docs/ci-github-webhook.md`。
 - CI 跑单元/集成测试、合成 fixture E2E 与 CLI 冒烟；真实账本的 `--source` E2E 不在 CI 中执行，涉及写入/恢复的改动需在本地跑并在 PR 中注明。
 

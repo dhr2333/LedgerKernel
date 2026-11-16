@@ -9,6 +9,7 @@ All notable changes are recorded here. The format follows Keep a Changelog; vers
 ### Added
 
 - Synthetic fixture ledger `tests/fixtures/ledger`: nested includes, a plugin, pad/balance assertions, a closed account, and a fixed `write_target`; no real data.
+- Real-ledger dogfood protocol `docs/dogfood.en.md`: sample, metrics, and v0.2 prioritisation rules.
 - The end-to-end script `scripts/e2e_ledger.py` covers commit, external-change observation with diff, draft invalidation, and blocking commits on an invalid ledger; CI runs it on every build and a `unittest` integration case wraps it.
 
 ### Changed
