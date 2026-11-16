@@ -2,6 +2,18 @@
 
 所有重要变更记录在此。格式参考 Keep a Changelog；版本遵循语义化版本。
 
+## [Unreleased]
+
+### Added
+
+- 账户层 dogfood 协议升级到 v0.2.x 轮次（`docs/dogfood.md` / `.en.md`）：新增账户层指标、每轮记录表与判据 #6–#9；新增基线工具 `scripts/dogfood_account_layer.py`（合成 fixture 可复现，`--source` 真实账本临时副本只读）。
+- `accounts list` 每行新增 `assertion_status` / `last_assertion` / `reconciliation`（与 `accounts show` 一致）；`review --by-account` 改用一次批量读取。
+- v0.2 账户层 dogfood 基线轮报告 `docs/design/v0.2-dogfood-round2.md`：真实账本副本 97 个活跃账户、17/17 检查通过、不含真实数据。
+
+### Changed
+
+- 读与元数据操作在闭包字节未变时复用上次 Beancount 加载结果（每次仍重算闭包哈希），不再重复全量解析；对账记录增加按审计文件签名的进程内缓存。真实账本副本：`get_account` p50 929→34ms、`reconcile_account` p50 912→31ms、`review --by-account` 中位 4840→878ms；`validate` 仍为完整 dry-run（p50 ≈1.14s/笔），留作后续性能项。
+
 ## [0.2.0] - 2026-11-16
 
 ### Added

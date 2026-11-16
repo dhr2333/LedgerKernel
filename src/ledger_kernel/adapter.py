@@ -322,6 +322,22 @@ class BeancountAdapter:
                         result[posting.account] = entry.date
         return result
 
+    def rehash_manifest(self, manifest: Mapping[str, str]) -> dict[str, str] | None:
+        """Re-hash a previously discovered closure without re-parsing the ledger.
+
+        Returns None when any known file disappeared, so the caller falls back
+        to a full load and can surface the closure change normally. A new file
+        can only enter the closure through an edited include directive, which
+        changes a known file's hash first.
+        """
+        current: dict[str, str] = {}
+        for relative in sorted(manifest):
+            try:
+                current[relative] = sha256_file(self.ledger_dir / relative)
+            except OSError:
+                return None
+        return current
+
     def last_balance_assertions(self, load: LoadResult) -> dict[str, dict[str, Any]]:
         """Latest Beancount ``balance`` directive per account and currency.
 

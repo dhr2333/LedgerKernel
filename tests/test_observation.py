@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from ledger_kernel.errors import KernelError
 from ledger_kernel.kernel import Kernel
@@ -28,6 +29,27 @@ class ObservationTests(unittest.TestCase):
         self.kernel.validate_draft(draft_id)
         self.kernel.approve_draft(draft_id)
         return draft_id
+
+    def test_unchanged_ledger_reuses_cached_load(self) -> None:
+        with mock.patch.object(
+            self.kernel.adapter, "load", wraps=self.kernel.adapter.load
+        ) as load_mock:
+            self.kernel.list_accounts()
+            self.kernel.get_status()
+            self.kernel.get_account("Assets:Cash")
+        self.assertEqual(load_mock.call_count, 0)
+
+        accounts = self.base / "accounts.bean"
+        accounts.write_text(
+            accounts.read_text(encoding="utf-8") + "\n2026-02-01 open Expenses:Cached CNY\n",
+            encoding="utf-8",
+        )
+        with mock.patch.object(
+            self.kernel.adapter, "load", wraps=self.kernel.adapter.load
+        ) as load_mock:
+            status = self.kernel.get_status()
+        self.assertEqual(load_mock.call_count, 1)
+        self.assertEqual(status["observations"], 1)
 
     def test_external_edit_while_kernel_closed_is_observed_not_overwritten(self) -> None:
         accounts = self.base / "accounts.bean"

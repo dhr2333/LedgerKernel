@@ -576,25 +576,35 @@ def _review_by_account_payload(
     else:
         names = sorted(grouped)
 
+    # One bulk read provides lifecycle/balances/contract/reconciliation for all
+    # groups; falling back to get_account only for accounts outside the ledger.
+    account_rows = {row["account"]: row for row in kernel.list_accounts()}
     groups: list[dict[str, Any]] = []
     for name in names:
         drafts = grouped.get(name, [])
-        try:
-            view = kernel.get_account(name)
-            lifecycle = view["lifecycle"]
-            balances = view["balances"]
-            reconciliation = view["reconciliation"]
-            contract = view["contract"]
-        except KernelError as exc:
-            if exc.code != "ACCOUNT_NOT_FOUND":
-                raise
-            lifecycle, balances, contract = "not_open", {}, None
-            reconciliation = {
-                "status": "not_configured",
-                "last": None,
-                "difference_status": "none",
-                "next_due": None,
-            }
+        meta = account_rows.get(name)
+        if meta is not None:
+            lifecycle = meta["lifecycle"]
+            balances = meta["balances"]
+            reconciliation = meta["reconciliation"]
+            contract = meta["contract"]
+        else:
+            try:
+                view = kernel.get_account(name)
+                lifecycle = view["lifecycle"]
+                balances = view["balances"]
+                reconciliation = view["reconciliation"]
+                contract = view["contract"]
+            except KernelError as exc:
+                if exc.code != "ACCOUNT_NOT_FOUND":
+                    raise
+                lifecycle, balances, contract = "not_open", {}, None
+                reconciliation = {
+                    "status": "not_configured",
+                    "last": None,
+                    "difference_status": "none",
+                    "next_due": None,
+                }
         warnings: list[dict[str, Any]] = []
         seen: set[tuple[str, str, Any]] = set()
         for row in drafts:

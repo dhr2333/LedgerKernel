@@ -274,6 +274,8 @@ class Kernel:
         self._state: dict[str, Any] | None = None
         self._contract: Contract | None = None
         self._contract_error: KernelError | None = None
+        self._reconciliation_cache: list[dict[str, Any]] | None = None
+        self._reconciliation_signature: tuple[int, int] | None = None
         self._lock = FileLock(config.meta_dir / "kernel.lock")
 
     # ------------------------------------------------------------- lifecycle
@@ -638,8 +640,34 @@ class Kernel:
                 "previous_revision": current_revision,
             }
 
+    def _cached_load_if_unchanged(self) -> LoadResult | None:
+        """Return the last load when the closure bytes are provably unchanged.
+
+        Every operation still re-hashes the whole closure (the external-change
+        invariant); we only skip re-parsing Beancount when those hashes, the
+        contract revision and the engine fingerprint all match the cached load.
+        Conservative cases (previous load had errors, fallback closure source,
+        missing state, removed file) always take the full-load path.
+        """
+        cached = self._load
+        if cached is None or not cached.ok or cached.closure_source != "options.include":
+            return None
+        state = self._state or self.store.load_state()
+        if state is None or state.get("manifest") != cached.manifest:
+            return None
+        if state.get("contract_revision") != contract_revision(self.config.contracts_path):
+            return None
+        if state.get("engine_fingerprint") != engine_fingerprint():
+            return None
+        current_manifest = self.adapter.rehash_manifest(cached.manifest)
+        if current_manifest is None or current_manifest != cached.manifest:
+            return None
+        return cached
+
     def _ensure_fresh_locked(self) -> LoadResult:
-        load = self.adapter.load(self.config.root_path)
+        load = self._cached_load_if_unchanged()
+        if load is None:
+            load = self.adapter.load(self.config.root_path)
         contract_rev = contract_revision(self.config.contracts_path)
         contract = self._read_contract_lenient()
         state = self._state or self.store.load_state()
@@ -1460,12 +1488,25 @@ class Kernel:
             return workflow
 
     # ---------------------------------------------------------- reconciliation
+    def _reconciliation_audit_signature_locked(self) -> tuple[int, int] | None:
+        """Cheap signature of the audit file used to reuse an in-memory rebuild."""
+        try:
+            stat = self.store.audit_path.stat()
+        except OSError:
+            return None
+        return (stat.st_size, stat.st_mtime_ns)
+
     def _reconciliation_records_from_audit(self) -> list[dict[str, Any]]:
         """Rebuild reconciliation records from the append-only audit chain.
 
-        The audit chain is the truth; the ``state.json.reconciliations`` cache is
-        derived from it and is never trusted for reads.
+        The audit chain is the truth; ``state.json.reconciliations`` is derived from
+        it and is never trusted for reads. A per-instance cache keyed by the audit
+        file signature avoids re-parsing the whole chain for every account view,
+        while the next read after any append or external change still rebuilds.
         """
+        signature = self._reconciliation_audit_signature_locked()
+        if self._reconciliation_cache is not None and signature == self._reconciliation_signature:
+            return self._reconciliation_cache
         records: dict[str, dict[str, Any]] = {}
         order: list[str] = []
         for event in self.store.audit_events():
@@ -1493,7 +1534,10 @@ class Kernel:
                 record["reverted_at"] = event.get("occurred_at")
                 record["revert_reason"] = event.get("reason")
                 record["revert_event_id"] = event.get("event_id")
-        return [records[reconciliation_id] for reconciliation_id in order]
+        result = [records[reconciliation_id] for reconciliation_id in order]
+        self._reconciliation_cache = result
+        self._reconciliation_signature = signature
+        return result
 
     def _rebuild_reconciliations_locked(self) -> list[dict[str, Any]]:
         """Rebuild ``state.json.reconciliations`` from the audit chain."""
@@ -1785,7 +1829,10 @@ class Kernel:
         with self._locked():
             load = self._ensure_fresh_locked()
             contract = self._read_contract_lenient()
-            balances = self.adapter.balances(load, as_of or dt.date.today())
+            today = dt.date.today()
+            balances = self.adapter.balances(load, as_of or today)
+            assertions = self.adapter.last_balance_assertions(load)
+            reconciliation_records = self._reconciliation_records_from_audit()
             pending = self._pending_counts_locked()
             rows: list[dict[str, Any]] = []
             for name, info in sorted(load.accounts.items()):
@@ -1806,6 +1853,11 @@ class Kernel:
                         "aliases": list(policy.aliases) if policy else [],
                         "contract": account_contract_view(policy),
                         "pending_drafts": pending.get(name, 0),
+                        "assertion_status": "asserted" if name in assertions else "unset",
+                        "last_assertion": assertions.get(name),
+                        "reconciliation": _reconciliation_view(
+                            contract, name, reconciliation_records, today
+                        ),
                     }
                 )
             return rows

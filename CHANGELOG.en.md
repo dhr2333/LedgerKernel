@@ -4,6 +4,18 @@ English | [中文](CHANGELOG.md)
 
 All notable changes are recorded here. The format follows Keep a Changelog; versions follow Semantic Versioning.
 
+## [Unreleased]
+
+### Added
+
+- Account-layer dogfood protocol upgraded to the v0.2.x round (`docs/dogfood.en.md` / `.md`): account-layer metrics, a per-round record table, and criteria #6-#9; new baseline tool `scripts/dogfood_account_layer.py` (reproducible on the synthetic fixture; `--source` reads a real-ledger copy only).
+- Every `accounts list` row now carries `assertion_status` / `last_assertion` / `reconciliation` (matching `accounts show`); `review --by-account` now uses one bulk read.
+- v0.2 account-layer dogfood baseline report `docs/design/v0.2-dogfood-round2.md`: real-ledger copy with 97 active accounts, 17/17 checks passing, no real data.
+
+### Changed
+
+- Reads and metadata operations reuse the previous Beancount load when the closure bytes are unchanged (the closure is still re-hashed every time), so the ledger is no longer fully re-parsed per operation; reconciliation records gained an in-process cache keyed by the audit-file signature. On the real-ledger copy: `get_account` p50 929→34 ms, `reconcile_account` p50 912→31 ms, `review --by-account` median 4840→878 ms; `validate` remains a full dry-run (p50 ≈1.14 s per entry) and is left as a future performance item.
+
 ## [0.2.0] - 2026-11-16
 
 ### Added

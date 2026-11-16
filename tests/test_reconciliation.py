@@ -616,6 +616,33 @@ class ReconciliationAccountViewTests(_ReconciliationTestCase):
         self.assertEqual(account["assertion_status"], "asserted")
         self.assertEqual(account["last_assertion"]["amounts"], {"CNY": "999.00"})
 
+    def test_list_accounts_exposes_account_layer_views(self) -> None:
+        kernel = self.new_kernel(
+            contract=MONTHLY_CONTRACT,
+            extra_accounts="\n2026-01-02 balance Assets:Cash 1000.00 CNY\n",
+        )
+        kernel.reconcile_account("Assets:Cash", as_of=self.today, declared={"CNY": "1000.00"})
+
+        row = next(row for row in kernel.list_accounts() if row["account"] == "Assets:Cash")
+        account = kernel.get_account("Assets:Cash")
+        self.assertEqual(row["assertion_status"], "asserted")
+        self.assertEqual(row["last_assertion"], account["last_assertion"])
+        self.assertEqual(row["reconciliation"], account["reconciliation"])
+        self.assertEqual(row["reconciliation"]["status"], "current")
+
+    def test_reads_see_reconciliation_written_by_another_kernel(self) -> None:
+        kernel = self.new_kernel(contract=MONTHLY_CONTRACT)
+        self.assertEqual(kernel.get_account("Assets:Cash")["reconciliation"]["status"], "never")
+
+        other = Kernel.open(self.base)
+        record = other.reconcile_account("Assets:Cash", as_of=self.today)["record"]
+
+        rows = kernel.list_reconciliations("Assets:Cash")
+        self.assertEqual([row["reconciliation_id"] for row in rows], [record["reconciliation_id"]])
+        self.assertEqual(kernel.get_account("Assets:Cash")["reconciliation"]["status"], "current")
+        bulk = next(row for row in kernel.list_accounts() if row["account"] == "Assets:Cash")
+        self.assertEqual(bulk["reconciliation"]["status"], "current")
+
     def test_get_account_combines_assertion_and_reconciliation(self) -> None:
         kernel = self.new_kernel(
             contract=MONTHLY_CONTRACT,

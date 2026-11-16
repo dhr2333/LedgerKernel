@@ -156,7 +156,7 @@ Claude Desktop / DSH 等客户端配置示例：
 5. **人工批准**：批准绑定 validation 与两个 revision；Agent 无法调用批准接口。
 6. **受控提交**：单文件、只追加；提交前二次完整校验、写前快照、`PREPARED` journal、目标 hash 复查、最终整账本 revision 复查、同目录临时文件 `fsync` + `os.replace` + 目录 `fsync`、`COMMITTED` 审计。
 7. **崩溃恢复**：重启后按 journal 的 before/after hash 判定“已应用/未应用/不确定”；已应用且账本 revision 等于 journal 记录才确认提交，绝不重复追加；不确定进入 `RecoveryRequired`，等待人工处理。
-8. **外部变化**：每次操作前重算闭包指纹；发现变化时重新加载、保存 diff（有旧 blob 时）、失效旧草稿、记录 `ExternalChangeObserved`。外部变化导致账本无效时进入 `LedgerInvalid`，阻断受控提交，但不改用户文件。
+8. **外部变化**：每次操作前重算闭包指纹；发现变化时重新加载、保存 diff（有旧 blob 时）、失效旧草稿、记录 `ExternalChangeObserved`。外部变化导致账本无效时进入 `LedgerInvalid`，阻断受控提交，但不改用户文件。闭包字节未变时复用上次 Beancount 加载结果（仍每次重算闭包哈希），不跳过外部变化检测。
 9. **已知转移**：只有“当前 revision = 旧 manifest 仅替换 `write_target` 为某条 COMMITTED journal 的 after_hash”才视为内核自身提交；其他一律按外部变化。批量批准可在 `review_digest` 不变时沿用批准（`ApprovalCarriedForward`），不跳过重验。
 10. **审计链**：`events.jsonl` 每条事件带 `prev_hash` 与 `event_hash`；链损坏/为空时拒绝提交（`AUDIT_INTEGRITY`）。
 
@@ -262,7 +262,7 @@ ledger-kernel accounts reconciliation revert rec_... --reason "余额抄错" --c
 ```
 
 - 记录字段：`reconciliation_id`、`account`、`as_of`、`ledger_balances`（该账户 `as_of` 日终余额，多币种）、`declared_balances`（可选申报余额）、`differences = declared - ledger`（按申报币种逐项）、`declared_not_in_ledger`（申报币种不在账本余额时按 ledger=0 计算并在此列出）、`ledger_revision`、`contract_revision`、`actor`（`human/local-user`）、`recorded_at`、`note`（可选）。金额一律使用十进制字符串；`float` 或非法金额返回 `RECONCILIATION_INVALID`。
-- 对账状态由契约 `policy.reconciliation.cadence`（`weekly/monthly/quarterly/yearly`）与最近有效记录推导：`not_configured` / `never` / `current` / `overdue`；`next_due = last.as_of + cadence_days`；`difference_status` 为 `none/zero/nonzero`。`accounts show` 同时返回 `assertion_status`（`unset`/`asserted`）、`last_assertion`（最近一条 Beancount `balance` 指令的日期与金额；没有则为 `null`）与 `reconciliation` 视图；断言失败属于全局 `LedgerInvalid`，不在账户视图伪装通过。
+- 对账状态由契约 `policy.reconciliation.cadence`（`weekly/monthly/quarterly/yearly`）与最近有效记录推导：`not_configured` / `never` / `current` / `overdue`；`next_due = last.as_of + cadence_days`；`difference_status` 为 `none/zero/nonzero`。`accounts show` 同时返回 `assertion_status`（`unset`/`asserted`）、`last_assertion`（最近一条 Beancount `balance` 指令的日期与金额；没有则为 `null`）与 `reconciliation` 视图；断言失败属于全局 `LedgerInvalid`，不在账户视图伪装通过。`accounts list` 的每一行也包含同样三个字段，便于一次查看全部账户的对账/断言状态。
 - 同一账户同一 `as_of` 只允许一条有效记录（先撤销再重记）；只能撤销该账户最新的有效记录，撤销后状态回退到上一条记录，历史记录仍保留在审计链中。
 - 前置条件：账本加载无错误、账户在 `as_of` 已开立未关闭、`as_of <= today`；否则返回 `RECONCILIATION_INVALID` 且不写入任何记录。对账不要求证据，`note` 可选。
 - **对账永不阻断**：状态只用于提示、排序与审核视图，`CONTRACT_RECONCILIATION` 仅在 `never`/`overdue` 时警告；`hard_deadline` 兼容读取但被忽略。申报差异只记录、只展示，不自动生成调整分录、不自动提交；需要调整时仍走草稿 → validate → approve → commit。
@@ -389,6 +389,7 @@ PYTHONPATH=src python3 scripts/e2e_ledger.py --source /path/to/TestAssets
 - **快照保留**：默认 512 MiB 上限，超出后按最旧未受保护 blob 清理；不会删除当前 manifest/journal 引用的基线。
 - **账户层元数据**：契约编辑的双哈希 CAS 只防内核并发与误写；普通编辑器仍可在哈希检查与 `os.replace` 之间制造理论竞态。对账状态是日期驱动的工作流提示，不因后续提交自动失效；申报差异只读，不生成调整分录。
 - **按账户审核**：`review --by-account` 是只读分组视图，不支持按账户批量批准；账户级快捷操作留待 v0.3 评估（ADR-020）。
+- **性能**：读与元数据操作在闭包字节未变时复用已加载结果；首次加载与 `validate` 的完整 dry-run 仍是主要成本（134 文件真实账本副本首次约 0.7 s、`validate` 约 1.1 s/笔）。审计链 append 仍为 O(n)，事件数很大时需索引（见 [dogfood 轮次报告](docs/design/v0.2-dogfood-round2.md)）。
 
 ## 代码结构
 
