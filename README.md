@@ -1,10 +1,10 @@
-# LedgerKernel v0.1
+# LedgerKernel
 
 本地账本账户内核：围绕 Beancount 账本提供**提案 → 完整 Dry-run → 人工确认 → 受控追加 → 审计 → 恢复**的闭环。
 
 账本文件是财务事实的唯一真相源；内核是所有**自动化写入**的唯一受控入口。用户保留直接编辑账本的最高权限，内核不阻止、不覆盖，只负责发现、记录，并在无法安全归因时明确标记 `external_unknown`。
 
-> 本仓库是 v0.1 原型实现。设计基线——顶层设计摘要、工程决策冻结与原型实施计划、设计规格、实施记录与 ADR-012/ADR-013——以 [`docs/design/`](docs/design/README.md) 为唯一真相源；库外笔记不保留副本。实现覆盖 P0-A～P0-D 及薄 MCP 适配器（P0-E 的最小工具集）。
+> 本仓库是 v0.1 原型实现，并在 `Unreleased` 中实现 v0.2 账户层（契约编辑、账户对账、账户级审核）。设计基线——顶层设计摘要、工程决策冻结与原型实施计划、设计规格、实施记录、v0.2 账户层设计与 ADR——以 [`docs/design/`](docs/design/README.md) 为唯一真相源；库外笔记不保留副本。实现覆盖 P0-A～P0-D 及薄 MCP 适配器（P0-E 的最小工具集）。
 
 CI：Jenkins（内部，GitHub webhook 触发，配置见 [ci-github-webhook](docs/ci-github-webhook.md)）· 开发约定：[CONTRIBUTING.md](CONTRIBUTING.md) · Agent 约定：[AGENTS.md](AGENTS.md) · 发布流程：[release-checklist](docs/release-checklist.md) · 版本记录：[CHANGELOG.md](CHANGELOG.md)
 
@@ -167,9 +167,13 @@ Claude Desktop / DSH 等客户端配置示例：
 - [v0.1 设计规格](docs/design/v0.1-spec.md)
 - [v0.1 工程决策冻结与原型实施计划](docs/design/v0.1-implementation-plan.md)
 - [v0.1 实施完成记录](docs/design/v0.1-implementation-report.md)
+- [v0.2 范围建议](docs/design/v0.2-scope.md)
+- [v0.2 账户层设计](docs/design/v0.2-account-layer.md)
+- [v0.2 账户层实施计划](docs/design/v0.2-account-layer-plan.md)（实施结果见第 9 节）
 - ADR：[ADR-012 增量断言](docs/design/adr/ADR-012-delta-assertion.md)、[ADR-013 已知转移](docs/design/adr/ADR-013-known-transition.md)、[ADR-014 engine 指纹](docs/design/adr/ADR-014-engine-fingerprint.md)、[ADR-015 review digest](docs/design/adr/ADR-015-review-digest.md)、[ADR-016 草稿模板](docs/design/adr/ADR-016-draft-templates.md)、[ADR-017 重复告警](docs/design/adr/ADR-017-duplicate-warning.md)
+- v0.2 ADR：[ADR-018 对账是工作流事实](docs/design/adr/ADR-018-reconciliation-fact.md)、[ADR-019 契约编辑](docs/design/adr/ADR-019-contract-apply.md)、[ADR-020 账户级审核](docs/design/adr/ADR-020-account-level-review.md)
 
-这些文档描述 v0.1 原型基线；与代码行为冲突时，以 README、测试和最新 ADR 为准。
+这些文档描述 v0.1 原型基线与已实现的 v0.2 账户层（未发布）；与代码行为冲突时，以 README、测试和最新 ADR 为准。
 
 ## `.ledger-kernel/` 布局
 
@@ -294,6 +298,15 @@ ledger-kernel review --by-account --state Approved   # --state 过滤仍先生�
 | 契约存储 | `.ledger-kernel/contracts.yaml`，`schema_version: 1`，严格字段，声明式 |
 | MCP 传输 | stdio，一行一条 JSON-RPC；只暴露读取与提案 |
 
+### v0.2 账户层冻结决策（对应 v0.2 实施计划第 0 节）
+
+| 事项 | 选择 |
+|---|---|
+| 契约编辑 | 唯一写入口 `contracts apply`：`--expected-current` + `--confirm` 双哈希 CAS、原子替换、`ContractChanged` 审计与前后内容 blob；失败不改文件（ADR-019） |
+| 账户对账 | 审计事件 `AccountReconciled` / `AccountReconciliationReverted` 追加式记录；状态按 `cadence` 与日期推导，不要求证据、永不阻断写入；`hard_deadline` 兼容读取但忽略（ADR-018） |
+| 申报余额 | 可选 `--declared CUR=VALUE`；记录 `ledger_balances / declared_balances / differences`，差异只读，不自动调整、不自动提交 |
+| 账户级审核 | `review --by-account/--account` 只读分组视图；不新增账户级批准对象，批准仍绑定 `draft_id + validation_id + ledger_revision + contract_revision`（ADR-020） |
+
 ## 验收测试矩阵
 
 运行：
@@ -329,6 +342,25 @@ PYTHONPATH=src python3 -m unittest discover -s tests -t .
 | T23 | 批中途外部变化 | `test_external_change_mid_batch_invalidates_remaining_approvals` |
 | T24 | 提交后外部追加 | `test_external_append_after_commit_is_not_a_known_transition` |
 
+### v0.2 账户层验收
+
+| 编号 | 场景 | 测试 |
+|---|---|---|
+| A01 | 契约 apply：替换文件、`ContractChanged` 审计、前后 blob、`ledger_revision` 不变 | `test_apply_replaces_file_records_audit_and_keeps_ledger_revision` |
+| A02 | 契约 CAS 冲突/确认不符/缺失哈希 → `CONTRACT_CONFLICT`，文件不变 | `test_apply_rejects_stale_expected_current_without_writing`、`test_apply_requires_expected_current`、`test_apply_requires_matching_confirm_hash` |
+| A03 | 非法 schema、`unmanaged_accounts` 重叠 → `CONTRACT_INVALID`，文件不变 | `test_apply_rejects_invalid_contracts_without_writing` |
+| A04 | 契约变更使 pending validation/approval 失效，重验后可批准 | `test_apply_invalidates_pending_validation_and_approval` |
+| A05 | 契约覆盖率与 `unmanaged_accounts` 计数 | `test_contracts_view_warns_about_unopened_accounts`、`test_accounts_list_coverage_reports_managed_and_unmanaged` |
+| A06 | 对账记录成功、审计事件、`ledger_revision` 不变 | `test_record_success_persists_record_and_audit_event` |
+| A07 | 对账状态 `current/overdue/never/not_configured` 与 `next_due` | `test_current_status_and_next_due`、`test_overdue_status_and_next_due`、`test_never_and_not_configured_statuses` |
+| A08 | 申报差异：未申报/零/非零/多币种/不在账本余额 | `test_zero_difference_is_recorded`、`test_nonzero_difference_is_recorded`、`test_multi_currency_balances_and_differences`、`test_declared_currency_absent_from_ledger_uses_zero` |
+| A09 | 无效账本/账户未开立/`as_of` 未来/重复 `as_of` → `RECONCILIATION_INVALID`，不写 | `test_invalid_ledger_is_rejected`、`test_account_not_open_on_as_of_is_rejected`、`test_future_as_of_is_rejected`、`test_duplicate_as_of_is_rejected` |
+| A10 | 撤销只能最新、状态回退，历史保留 | `test_revert_requires_the_latest_record`、`test_revert_restores_previous_status_and_keeps_history` |
+| A11 | 缓存缺失/损坏时从审计重建，读取以审计为准 | `test_missing_state_json_rebuilds_cache_from_audit`、`test_corrupt_state_cache_rebuilds_from_audit`、`test_reads_derive_truth_from_audit_not_from_cache` |
+| A12 | 对账逾期仍不阻断提交 | `test_overdue_warning_still_does_not_block_commit` |
+| A13 | `review --by-account` 分组与 `--account` 过滤 | `test_by_account_groups_each_draft_under_its_accounts`、`test_account_filter_limits_to_one_group` |
+| A14 | 分组视图不改变批准绑定 | `test_by_account_approve_requires_explicit_ids_and_binds_each_draft` |
+
 端到端检查分两层，都只操作临时副本：
 
 合成 fixture（默认，CI 每次构建执行；覆盖提交、外部修改、草稿失效、无效账本阻断）：
@@ -343,7 +375,7 @@ PYTHONPATH=src python3 scripts/e2e_ledger.py
 PYTHONPATH=src python3 scripts/e2e_ledger.py --source /path/to/TestAssets
 ```
 
-## 已知限制（v0.1 如实声明）
+## 已知限制（如实声明）
 
 - **平台**：当前锁与目录 `fsync` 实现面向 POSIX（`fcntl.flock`）；Windows 需替换锁实现后再用。
 - **并发**：`flock` 只协调内核写入。普通编辑器不遵守锁；最后 hash 检查与 `os.replace` 之间仍存在理论竞态窗口。v0.1 降低窗口、检测前后漂移，但不承诺对不配合的进程实现通用 compare-and-swap。
@@ -355,14 +387,16 @@ PYTHONPATH=src python3 scripts/e2e_ledger.py --source /path/to/TestAssets
 - **修正/冲销**：`corrections propose <commit_id>` 只生成冲销草稿，仍须 validate/approve/commit；不删除、不改写原交易。外部直接写入的交易没有稳定的 `commit_id`，暂不能一键生成冲销草稿。
 - **MCP**：stdio 最小实现（initialize / tools/list / tools/call）；未做鉴权、流式进度、资源订阅。远程接入必须自行加安全通道。
 - **快照保留**：默认 512 MiB 上限，超出后按最旧未受保护 blob 清理；不会删除当前 manifest/journal 引用的基线。
+- **账户层元数据**：契约编辑的双哈希 CAS 只防内核并发与误写；普通编辑器仍可在哈希检查与 `os.replace` 之间制造理论竞态。对账状态是日期驱动的工作流提示，不因后续提交自动失效；申报差异只读，不生成调整分录。
+- **按账户审核**：`review --by-account` 是只读分组视图，不支持按账户批量批准；账户级快捷操作留待 v0.3 评估（ADR-020）。
 
 ## 代码结构
 
 ```text
 src/ledger_kernel/
-├── cli.py            # 人工审核与契约编辑 CLI
+├── cli.py            # 人工审核、契约编辑与对账 CLI
 ├── mcp_server.py     # MCP stdio 适配器（只读 + 提案）
-├── kernel.py         # 用例编排：状态、草稿、批准、提交、恢复
+├── kernel.py         # 用例编排：状态、草稿、批准、提交、恢复、契约与对账
 ├── adapter.py        # Beancount 加载/闭包/账户/余额/规范 entry
 ├── dryrun.py         # 临时工作区、完整校验、ADR-012 增量断言、diff
 ├── schema.py         # 草稿 schema、文本安全、Beancount 渲染

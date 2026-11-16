@@ -1,12 +1,12 @@
 English | [中文](README.md)
 
-# LedgerKernel v0.1
+# LedgerKernel
 
 A local ledger account kernel that wraps a Beancount ledger and provides a closed loop of **proposal → full dry-run → human approval → controlled append → audit → recovery**.
 
 The ledger file is the single source of truth for financial facts; the kernel is the only **controlled entry point for automation writes**. The user keeps the highest authority to edit the ledger directly — the kernel does not block or overwrite edits, it only discovers and records them, and marks changes it cannot safely attribute as `external_unknown`.
 
-> This repository is the v0.1 prototype implementation. The design baseline — *Design Summary*, *Engineering Decision Freeze and Prototype Implementation Plan*, *Design Spec Draft*, implementation report, and ADR-012/ADR-013 — has exactly one source of truth: [`docs/design/`](docs/design/README.md). External notes keep no copy of it. The implementation covers P0-A to P0-D plus a thin MCP adapter (the minimal tool set of P0-E).
+> This repository is the v0.1 prototype implementation, with the v0.2 account layer (contract editing, account reconciliation, account-level review) implemented under `Unreleased`. The design baseline — *Design Summary*, *Engineering Decision Freeze and Prototype Implementation Plan*, *Design Spec Draft*, implementation record, v0.2 account-layer design, and ADRs — has exactly one source of truth: [`docs/design/`](docs/design/README.md). External notes keep no copy of it. The implementation covers P0-A to P0-D plus a thin MCP adapter (the minimal tool set of P0-E).
 
 CI: Jenkins (internal, triggered by GitHub webhook; configuration in [ci-github-webhook](docs/ci-github-webhook.en.md)) · Development conventions: [CONTRIBUTING.en.md](CONTRIBUTING.en.md) · Agent conventions: [AGENTS.en.md](AGENTS.en.md) · Release process: [release-checklist](docs/release-checklist.md) · Changelog: [CHANGELOG.en.md](CHANGELOG.en.md)
 
@@ -171,9 +171,13 @@ Client configuration example (Claude Desktop / DSH, etc.):
 - [v0.1 design spec](docs/design/v0.1-spec.md)
 - [v0.1 engineering decision freeze and prototype implementation plan](docs/design/v0.1-implementation-plan.md)
 - [v0.1 implementation record](docs/design/v0.1-implementation-report.md)
+- [v0.2 scope proposal](docs/design/v0.2-scope.md)
+- [v0.2 account-layer design](docs/design/v0.2-account-layer.md)
+- [v0.2 account-layer implementation plan](docs/design/v0.2-account-layer-plan.md) (implementation results in section 9)
 - ADRs: [ADR-012 delta assertion](docs/design/adr/ADR-012-delta-assertion.md), [ADR-013 known transition](docs/design/adr/ADR-013-known-transition.md), [ADR-014 engine fingerprint](docs/design/adr/ADR-014-engine-fingerprint.md), [ADR-015 review digest](docs/design/adr/ADR-015-review-digest.md), [ADR-016 draft templates](docs/design/adr/ADR-016-draft-templates.md), [ADR-017 duplicate warning](docs/design/adr/ADR-017-duplicate-warning.md)
+- v0.2 ADRs: [ADR-018 reconciliation is a workflow fact](docs/design/adr/ADR-018-reconciliation-fact.md), [ADR-019 contract apply](docs/design/adr/ADR-019-contract-apply.md), [ADR-020 account-level review](docs/design/adr/ADR-020-account-level-review.md)
 
-These documents describe the v0.1 prototype baseline and are currently available in Chinese only; where they conflict with code behavior, this README, the tests, and the latest ADRs take precedence.
+These documents describe the v0.1 prototype baseline and the implemented v0.2 account layer (unreleased), and are currently available in Chinese only; where they conflict with code behavior, this README, the tests, and the latest ADRs take precedence.
 
 ## `.ledger-kernel/` layout
 
@@ -298,6 +302,15 @@ ledger-kernel review --by-account --state Approved   # --state still filters fir
 | Contract storage | `.ledger-kernel/contracts.yaml`, `schema_version: 1`, strict fields, declarative |
 | MCP transport | stdio, one JSON-RPC message per line; only read and proposal tools are exposed |
 
+### v0.2 account-layer frozen decisions (implementation plan section 0)
+
+| Item | Choice |
+|---|---|
+| Contract editing | The only write entry point is `contracts apply`: `--expected-current` + `--confirm` dual-hash CAS, atomic replace, `ContractChanged` audit with before/after blobs; on failure the file is unchanged (ADR-019) |
+| Account reconciliation | Append-only audit events `AccountReconciled` / `AccountReconciliationReverted`; status derived from `cadence` and dates, no evidence required, never blocks writes; `hard_deadline` is accepted but ignored (ADR-018) |
+| Declared balances | Optional `--declared CUR=VALUE`; records `ledger_balances / declared_balances / differences`; differences are read-only and never create adjustments or commits |
+| Account-level review | `review --by-account/--account` read-only grouped view; no account-level approval object, approval still binds `draft_id + validation_id + ledger_revision + contract_revision` (ADR-020) |
+
 ## Acceptance test matrix
 
 Run:
@@ -333,6 +346,25 @@ PYTHONPATH=src python3 -m unittest discover -s tests -t .
 | T23 | External change mid-batch | `test_external_change_mid_batch_invalidates_remaining_approvals` |
 | T24 | External append after commit | `test_external_append_after_commit_is_not_a_known_transition` |
 
+### v0.2 account-layer acceptance
+
+| ID | Scenario | Test |
+|---|---|---|
+| A01 | Contract apply: replace file, `ContractChanged` audit, before/after blobs, `ledger_revision` unchanged | `test_apply_replaces_file_records_audit_and_keeps_ledger_revision` |
+| A02 | Contract CAS conflict / confirm mismatch / missing hash → `CONTRACT_CONFLICT`, file unchanged | `test_apply_rejects_stale_expected_current_without_writing`, `test_apply_requires_expected_current`, `test_apply_requires_matching_confirm_hash` |
+| A03 | Invalid schema or `unmanaged_accounts` overlap → `CONTRACT_INVALID`, file unchanged | `test_apply_rejects_invalid_contracts_without_writing` |
+| A04 | A contract change invalidates pending validation/approval; revalidation then approval | `test_apply_invalidates_pending_validation_and_approval` |
+| A05 | Contract coverage and `unmanaged_accounts` counting | `test_contracts_view_warns_about_unopened_accounts`, `test_accounts_list_coverage_reports_managed_and_unmanaged` |
+| A06 | Reconciliation record succeeds, audit event recorded, `ledger_revision` unchanged | `test_record_success_persists_record_and_audit_event` |
+| A07 | Reconciliation status `current/overdue/never/not_configured` and `next_due` | `test_current_status_and_next_due`, `test_overdue_status_and_next_due`, `test_never_and_not_configured_statuses` |
+| A08 | Declared differences: undeclared/zero/nonzero/multi-currency/currency absent from ledger | `test_zero_difference_is_recorded`, `test_nonzero_difference_is_recorded`, `test_multi_currency_balances_and_differences`, `test_declared_currency_absent_from_ledger_uses_zero` |
+| A09 | Invalid ledger / account not open / future `as_of` / duplicate `as_of` → `RECONCILIATION_INVALID`, nothing written | `test_invalid_ledger_is_rejected`, `test_account_not_open_on_as_of_is_rejected`, `test_future_as_of_is_rejected`, `test_duplicate_as_of_is_rejected` |
+| A10 | Only the latest record can be reverted; status rolls back and history is kept | `test_revert_requires_the_latest_record`, `test_revert_restores_previous_status_and_keeps_history` |
+| A11 | Missing/corrupt cache rebuilds from audit; reads trust the audit chain | `test_missing_state_json_rebuilds_cache_from_audit`, `test_corrupt_state_cache_rebuilds_from_audit`, `test_reads_derive_truth_from_audit_not_from_cache` |
+| A12 | Overdue reconciliation still never blocks commits | `test_overdue_warning_still_does_not_block_commit` |
+| A13 | `review --by-account` grouping and `--account` filtering | `test_by_account_groups_each_draft_under_its_accounts`, `test_account_filter_limits_to_one_group` |
+| A14 | The grouped view does not change approval binding | `test_by_account_approve_requires_explicit_ids_and_binds_each_draft` |
+
 The end-to-end check has two layers, both operating only on a temporary copy:
 
 Synthetic fixture (default; CI runs it on every build; covers commit, external change, draft invalidation, and blocking on an invalid ledger):
@@ -347,7 +379,7 @@ Real-ledger copy (run locally when writes/recovery/external changes are involved
 PYTHONPATH=src python3 scripts/e2e_ledger.py --source /path/to/TestAssets
 ```
 
-## Known limitations (stated honestly for v0.1)
+## Known limitations (stated honestly)
 
 - **Platform**: the current locking and directory `fsync` implementation targets POSIX (`fcntl.flock`); Windows requires a replacement lock implementation.
 - **Concurrency**: `flock` only coordinates kernel writes. Ordinary editors do not honor the lock, so a theoretical race window remains between the final hash check and `os.replace`. v0.1 narrows the window and detects drift before/after, but does not promise generic compare-and-swap against uncooperative processes.
@@ -359,14 +391,16 @@ PYTHONPATH=src python3 scripts/e2e_ledger.py --source /path/to/TestAssets
 - **Corrections/reversals**: `corrections propose <commit_id>` only produces a reversal draft that still needs validate/approve/commit; the original transaction is never deleted or rewritten. Externally written transactions have no stable `commit_id`, so a one-click reversal draft is not yet available for them.
 - **MCP**: minimal stdio implementation (initialize / tools/list / tools/call); no authentication, streaming progress, or resource subscriptions. Remote access requires its own secure channel.
 - **Snapshot retention**: default 512 MiB cap; beyond it, the oldest unprotected blobs are evicted. Baselines referenced by the current manifest/journal are never deleted.
+- **Account-layer metadata**: the contract apply dual-hash CAS only protects against concurrent kernels and mistaken writes; a plain editor can still create a theoretical race between the hash check and `os.replace`. Reconciliation status is a date-driven workflow hint that does not automatically expire after later commits; declared differences are read-only and never generate adjustment entries.
+- **Review by account**: `review --by-account` is a read-only grouped view and does not support account-level batch approval; account-level shortcuts are deferred to a v0.3 evaluation (ADR-020).
 
 ## Code structure
 
 ```text
 src/ledger_kernel/
-├── cli.py            # human review and contract-editing CLI
+├── cli.py            # human review, contract-editing and reconciliation CLI
 ├── mcp_server.py     # MCP stdio adapter (read-only + proposals)
-├── kernel.py         # use-case orchestration: state, drafts, approval, commit, recovery
+├── kernel.py         # use-case orchestration: state, drafts, approval, commit, recovery, contracts and reconciliation
 ├── adapter.py        # Beancount loading/closure/accounts/balances/normalized entries
 ├── dryrun.py         # temporary workspace, full validation, ADR-012 delta assertion, diff
 ├── schema.py         # draft schema, text safety, Beancount rendering

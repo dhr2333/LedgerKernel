@@ -13,18 +13,20 @@
 - 草稿模板与提交入口：`.ledger-kernel/templates.yaml`、`ledger-kernel templates list|show`、`ledger-kernel drafts submit --template|--payload`（ADR-016）。
 - validate 新增建议性 `DUPLICATE_SUSPECTED` 告警：重复流水可见但不阻断（ADR-017）。
 - ADR-014（engine fingerprint 不绑定 Python）、ADR-015（review digest 只覆盖交易正文）、ADR-016（草稿模板）、ADR-017（重复告警）。
-- v0.2 账户层设计草案 `docs/design/v0.2-account-layer.md` 与 ADR-018/019/020：契约编辑、账户状态/对账、账户级审核（设计先行，未实现）。
+- v0.2 账户层设计草案 `docs/design/v0.2-account-layer.md` 与 ADR-018/019/020：契约编辑、账户状态/对账、账户级审核（设计先行；W1-W3 已实现）。
 - `AGENTS.md` 明确发布前设计变更约定：正式发布前允许推翻旧设计，不要求向后兼容；该约定不写成 SKILL。
 - 账户层设计评审记录：对账不要求证据；对账永不阻断写入，`hard_deadline` 兼容读取但忽略；支持可选申报余额差异（只读）。
-- v0.2 账户层实施计划 `docs/design/v0.2-account-layer-plan.md`：工作包、文件映射、测试矩阵与实施顺序（待实现）。
+- v0.2 账户层实施计划 `docs/design/v0.2-account-layer-plan.md`：工作包、文件映射、测试矩阵与实施顺序（W1-W4 已实现，实施结果见第 9 节）。
 - 端到端脚本 `scripts/e2e_ledger.py` 覆盖提交、外部修改观测与 diff、草稿失效、无效账本阻断；CI 每次构建执行，并有一条 `unittest` 集成用例。
 - 契约编辑入口 `contracts show/validate/diff/apply`（v0.2 W1）：双哈希 CAS、严格预校验、原子替换、`ContractChanged` 审计与前后内容 blob；冲突返回新增错误码 `CONTRACT_CONFLICT` 且文件不变（ADR-019）。
 - 契约 schema 在 `schema_version: 1` 内加法新增可选 `unmanaged_accounts`：与 `accounts` 不允许重叠；契约覆盖率与 `unmanaged_accounts` 计数通过 `accounts list --coverage` 展示。
 - 账户对账入口 `accounts reconcile` 与 `accounts reconciliation list|revert`（v0.2 W2）：`AccountReconciled` / `AccountReconciliationReverted` 追加式审计，按契约 `cadence` 推导 `not_configured/never/current/overdue` 与 `next_due`，可选申报余额与只读差异，新错误码 `RECONCILIATION_INVALID`；`accounts show` 增加 `assertion_status`/`last_assertion` 摘要与 `reconciliation` 视图，`state.json.reconciliations` 可从审计重建。
 - 账户级审核分组视图 `review --by-account` / `review --account <name>`（v0.2 W3）：只读按账户聚合待审草稿，展示生命周期、余额、契约摘要、对账状态与草稿 latest validation 中的 `CONTRACT_*` 警告；`--account` 无草稿也显示该组，未知账户返回 `groups: []` 与 `note`。不新增账户级批准对象、审计事件或状态机状态；`--approve` 仍要求显式 draft_id 与 `--confirm`，逐 draft 绑定 `validation_id/ledger_revision/contract_revision`（ADR-020）。
+- v0.2 账户层验收矩阵：README 新增 A01～A14 用例映射；设计与实施计划标记为已实现，实施结果（146 个测试、合成与真实账本副本 e2e 全绿、提交记录）记录在 `v0.2-account-layer-plan.md` 第 9 节。
 
 ### Changed
 
+- README 标题不再限定 v0.1，补充 v0.2 账户层冻结决策、验收矩阵与已知限制；设计文档索引与文档状态更新为“v0.1 原型 + 已实现的 v0.2 账户层（未发布）”。
 - 契约 revision 变化时显式失效所有 pending validation/approval，下一次操作自动重验；契约编辑不写 Ledger、不改变 `ledger_revision`。新建内核的默认 `contracts.yaml` 增加 `unmanaged_accounts: []` 与说明注释，旧契约文件无需改动即可加载。
 - `engine_fingerprint` 只包含 Beancount 与 ledger-kernel 版本，不再包含 Python 运行时（ADR-014）：审核端换解释器不再使全部 validation 失效。
 - `review_digest` 改为哈希渲染后的交易正文，不再包含追加分隔符（ADR-015）：空 `write_target` 首笔提交后，其余已批准草稿可继续沿用批准。
