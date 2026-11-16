@@ -31,9 +31,15 @@
 按“行为是否变化”触发，不做逐次强制：
 
 - 公共 API、CLI、配置、schema、安装方式变化 → 更新 `README.md` / `README.en.md` 与相关 docstring。
-- 安全不变量、不可逆决策、兼容性边界变化 → 新增/修订 ADR（本仓库 `docs/design/adr/`，或库外设计库）。
+- 安全不变量、不可逆决策、兼容性边界变化 → 新增/修订 ADR，只进本仓库 `docs/design/adr/`。
 - 仅内部重构、测试补充、注释修正 → 不要求更新 README。
 - 发布相关 → 更新 `CHANGELOG.md` / `CHANGELOG.en.md` 并按 `docs/release-checklist.md` 执行。
+
+### 设计文档权威
+
+- 规范性设计（顶层设计摘要、设计规格、实施计划、ADR、实施记录）只以本仓库 `docs/design/` 为唯一真相源。
+- 库外笔记（Obsidian 设计库）不保留规范正文副本，只放项目状态与未冻结讨论稿；标注为草稿的内容在被引用前先落到仓库。
+- 两份副本冲突时，以能被测试或 commit 验证的那份为准，即本仓库。
 
 ### 双语同步
 

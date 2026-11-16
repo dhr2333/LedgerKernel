@@ -4,7 +4,7 @@
 
 账本文件是财务事实的唯一真相源；内核是所有**自动化写入**的唯一受控入口。用户保留直接编辑账本的最高权限，内核不阻止、不覆盖，只负责发现、记录，并在无法安全归因时明确标记 `external_unknown`。
 
-> 本仓库是 v0.1 原型实现，对应设计库中的《顶层设计摘要》《本地账户内核_v0.1_工程决策冻结与原型实施计划》《本地账户内核_v0.1_设计规格草案》与 ADR-012/ADR-013。实现覆盖 P0-A～P0-D 及薄 MCP 适配器（P0-E 的最小工具集）。
+> 本仓库是 v0.1 原型实现。设计基线——顶层设计摘要、工程决策冻结与原型实施计划、设计规格、实施记录与 ADR-012/ADR-013——以 [`docs/design/`](docs/design/README.md) 为唯一真相源；库外笔记不保留副本。实现覆盖 P0-A～P0-D 及薄 MCP 适配器（P0-E 的最小工具集）。
 
 CI：Jenkins（内部，GitHub webhook 触发，配置见 [ci-github-webhook](docs/ci-github-webhook.md)）· 开发约定：[CONTRIBUTING.md](CONTRIBUTING.md) · Agent 约定：[AGENTS.md](AGENTS.md) · 发布流程：[release-checklist](docs/release-checklist.md) · 版本记录：[CHANGELOG.md](CHANGELOG.md)
 

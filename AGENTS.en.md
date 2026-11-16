@@ -31,9 +31,15 @@ This file constrains Agents working inside this repository. It only states rules
 Triggered by "did behavior change?", not required on every change:
 
 - Public API, CLI, configuration, schema, or installation changes → update `README.md` / `README.en.md` and the related docstrings.
-- Security invariant, irreversible decision, or compatibility boundary changes → add/revise an ADR (in this repository's `docs/design/adr/`, or the external design library).
+- Security invariant, irreversible decision, or compatibility boundary changes → add/revise an ADR, which belongs only in this repository's `docs/design/adr/`.
 - Internal refactors, extra tests, comment fixes only → no README update required.
 - Release-related → update `CHANGELOG.md` / `CHANGELOG.en.md` and follow `docs/release-checklist.md`.
+
+### Design document authority
+
+- Normative design (design summary, design spec, implementation plan, ADRs, implementation report) has exactly one source of truth: this repository's `docs/design/`.
+- External notes (the Obsidian design library) never carry a copy of normative text; they hold project status and unfrozen discussion drafts only. Drafts marked as such must land in the repository before anything relies on them.
+- When two copies disagree, the one that tests or a commit can verify wins — that is this repository.
 
 ### Bilingual synchronization
 
