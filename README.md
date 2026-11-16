@@ -171,6 +171,7 @@ Claude Desktop / DSH 等客户端配置示例：
 - [v0.2 账户层设计](docs/design/v0.2-account-layer.md)
 - [v0.2 账户层实施计划](docs/design/v0.2-account-layer-plan.md)（实施结果见第 9 节）
 - [v0.3 范围与明确非目标](docs/design/v0.3-scope.md)（MVP：审核闭环；已冻结，代码未开始）
+- [v0.3 前端只读 JSON 契约](docs/design/v0.3-frontend-contract.md)（外部前端交互面；已冻结）
 - ADR：[ADR-012 增量断言](docs/design/adr/ADR-012-delta-assertion.md)、[ADR-013 已知转移](docs/design/adr/ADR-013-known-transition.md)、[ADR-014 engine 指纹](docs/design/adr/ADR-014-engine-fingerprint.md)、[ADR-015 review digest](docs/design/adr/ADR-015-review-digest.md)、[ADR-016 草稿模板](docs/design/adr/ADR-016-draft-templates.md)、[ADR-017 重复告警](docs/design/adr/ADR-017-duplicate-warning.md)
 - v0.2 ADR：[ADR-018 对账是工作流事实](docs/design/adr/ADR-018-reconciliation-fact.md)、[ADR-019 契约编辑](docs/design/adr/ADR-019-contract-apply.md)、[ADR-020 账户级审核](docs/design/adr/ADR-020-account-level-review.md)
 

@@ -175,6 +175,7 @@ Client configuration example (Claude Desktop / DSH, etc.):
 - [v0.2 account-layer design](docs/design/v0.2-account-layer.md)
 - [v0.2 account-layer implementation plan](docs/design/v0.2-account-layer-plan.md) (implementation results in section 9)
 - [v0.3 scope and explicit non-goals](docs/design/v0.3-scope.md) (MVP: review loop; frozen, code not started)
+- [v0.3 frontend read-only JSON contract](docs/design/v0.3-frontend-contract.md) (external frontend surface; frozen)
 - ADRs: [ADR-012 delta assertion](docs/design/adr/ADR-012-delta-assertion.md), [ADR-013 known transition](docs/design/adr/ADR-013-known-transition.md), [ADR-014 engine fingerprint](docs/design/adr/ADR-014-engine-fingerprint.md), [ADR-015 review digest](docs/design/adr/ADR-015-review-digest.md), [ADR-016 draft templates](docs/design/adr/ADR-016-draft-templates.md), [ADR-017 duplicate warning](docs/design/adr/ADR-017-duplicate-warning.md)
 - v0.2 ADRs: [ADR-018 reconciliation is a workflow fact](docs/design/adr/ADR-018-reconciliation-fact.md), [ADR-019 contract apply](docs/design/adr/ADR-019-contract-apply.md), [ADR-020 account-level review](docs/design/adr/ADR-020-account-level-review.md)
 
