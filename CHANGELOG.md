@@ -15,7 +15,8 @@
 - ADR-014（engine fingerprint 不绑定 Python）、ADR-015（review digest 只覆盖交易正文）、ADR-016（草稿模板）、ADR-017（重复告警）。
 - v0.2 账户层设计草案 `docs/design/v0.2-account-layer.md` 与 ADR-018/019/020：契约编辑、账户状态/对账、账户级审核（设计先行，未实现）。
 - `AGENTS.md` 明确发布前设计变更约定：正式发布前允许推翻旧设计，不要求向后兼容；该约定不写成 SKILL。
-- 账户层设计评审记录：对账不要求证据；`hard_deadline` 与申报余额差异列为待决。
+- 账户层设计评审记录：对账不要求证据；对账永不阻断写入，`hard_deadline` 兼容读取但忽略；支持可选申报余额差异（只读）。
+- v0.2 账户层实施计划 `docs/design/v0.2-account-layer-plan.md`：工作包、文件映射、测试矩阵与实施顺序（待实现）。
 - 端到端脚本 `scripts/e2e_ledger.py` 覆盖提交、外部修改观测与 diff、草稿失效、无效账本阻断；CI 每次构建执行，并有一条 `unittest` 集成用例。
 
 ### Changed
