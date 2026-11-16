@@ -4,7 +4,7 @@
 
 ## 1. 发布前
 
-- [ ] `main` 最新，工作区干净，Jenkins `main` 构建为绿。
+- [ ] `main` 最新，工作区干净，Jenkins `main` 构建为绿（commit check `LedgerKernel CI`；配置见 [ci-github-webhook](ci-github-webhook.md)）。
 - [ ] `PYTHONPATH=src python3 -m unittest discover -s tests -t .` 全部通过。
 - [ ] 涉及写入/恢复/外部变化的改动已跑 `PYTHONPATH=src python3 scripts/e2e_testassets.py --source <TestAssets>`。
 - [ ] 在至少一份真实账本副本上完成：提交、外部修改、旧草稿失效、恢复/拒绝提交。
@@ -29,7 +29,7 @@ git push origin main --tags
 
 ## 3. 发布后
 
-- [ ] 观察 Jenkins `main` 下一次构建；失败则回滚 tag 或立即修复。
+- [ ] 观察 Jenkins `main` 下一次构建（webhook 触发，通常在推送后 1 分钟内出现）；失败则回滚 tag 或立即修复。
 - [ ] 用真实账本副本再提交一笔交易，确认审计、journal、快照正常。
 - [ ] 记录本次发布中的问题，进入下一轮待办。
 

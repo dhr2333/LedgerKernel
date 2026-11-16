@@ -50,7 +50,8 @@ E2E 只操作 `--source` 指定账本的临时副本；**不得**修改原目录
 
 - 设计文档见 `docs/design/`；文档规则见 `AGENTS.md`。
 - 发布流程见 `docs/release-checklist.md`；版本记录见 `CHANGELOG.md`。
-- 当前 CI 为内部 Jenkins。合并前至少保证 `main` 构建为绿。
+- 当前 CI 为内部 Jenkins，由 GitHub webhook 在 push / PR 时触发；结果以 commit check `LedgerKernel CI` 显示在 commit 和 PR 上。合并前至少保证 `main` 构建为绿。webhook 与 job 配置见 `docs/ci-github-webhook.md`。
+- CI 只跑单元/集成测试与 CLI 冒烟；`scripts/e2e_testassets.py` 不在 CI 中执行，涉及写入/恢复的改动需在本地跑并在 PR 中注明。
 
 ## 安全边界
 

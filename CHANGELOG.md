@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- CI 触发方式明确为 GitHub webhook → 内部 Jenkins Multibranch；构建结果回写为 commit check `LedgerKernel CI`，配置步骤见 `docs/ci-github-webhook.md`。
+
 ## [0.1.0] - 2026-11-15
 
 ### Added

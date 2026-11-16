@@ -1,3 +1,8 @@
+#!/usr/bin/env groovy
+
+// LedgerKernel CI —— 由 GitHub webhook 触发，在一次性 Python 容器中跑测试。
+// 服务端与仓库端配置步骤见 docs/ci-github-webhook.md。
+
 pipeline {
     agent any
 
@@ -6,15 +11,18 @@ pipeline {
         buildDiscarder(logRotator(numToKeepStr: '10'))
     }
 
+    // 触发分支 / PR / tag 的白名单在 Jenkins job 配置与 GitHub webhook 中限制，
+    // 不在 Pipeline 里重复判断，避免分支被推送时没有任何构建反馈。
     environment {
         PYTHONUNBUFFERED = '1'
         PIP_DISABLE_PIP_VERSION_CHECK = '1'
     }
 
     stages {
+        // 默认 checkout 隐式使用 scm，webhook 推送的分支 / PR / tag 都会被正确
+        // 检出；构建状态也由 Git 插件按同一 commit 回写，不需要手动 checkout。
         stage('Checkout') {
             steps {
-                checkout scm
                 sh '''
                     git log -1 --oneline
                     git status --short
@@ -53,6 +61,8 @@ pipeline {
             echo '❌ LedgerKernel CI 失败，请查看测试日志'
         }
         always {
+            // GitHub commit check 状态由 Jenkins Git 插件自动回写（"LedgerKernel CI"）：
+            // 构建结束时写 SUCCESS / FAILURE；不要在这里手写状态，以免盖掉真实结果。
             cleanWs()
         }
     }
