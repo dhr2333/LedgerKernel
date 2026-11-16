@@ -113,7 +113,7 @@ CI 服务端需要凭据，但**任何令牌都不进入仓库**。维护者与 
 | `~/.config/jenkins-ai/token` | 当前令牌（机器可读副本） | `0600` |
 | `~/.config/jenkins-ai/config.json` | Jenkins URL、用户、令牌名与 UUID | `0600` |
 | `~/.config/jenkins-ai/rotation.log` | 轮换审计（只记 UUID，不记明文） | `0600` |
-| 私有笔记 `Secret/Jenkins AI Token.md` | 当前令牌（人类/AI 读取区） | vault 已 `.gitignore`，仅 Syncthing 同步 |
+| 私有笔记 `Secret/Jenkins/Token.md`（按平台分目录） | 当前令牌（人类/AI 读取区） | vault 已 `.gitignore`，仅 Syncthing 同步 |
 
 工具：`jk-token`（位于 `~/.local/bin/jk-token`）。
 

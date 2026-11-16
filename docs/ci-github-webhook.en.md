@@ -113,7 +113,7 @@ The CI server needs credentials, but **no token ever enters the repository**. Th
 | `~/.config/jenkins-ai/token` | current token (machine-readable copy) | `0600` |
 | `~/.config/jenkins-ai/config.json` | Jenkins URL, user, token name and UUID | `0600` |
 | `~/.config/jenkins-ai/rotation.log` | rotation audit trail (UUIDs only, no plaintext) | `0600` |
-| private note `Secret/Jenkins AI Token.md` | current token (human/agent reading area) | git-ignored in the vault, synced by Syncthing only |
+| private note `Secret/Jenkins/Token.md` (one directory per platform) | current token (human/agent reading area) | git-ignored in the vault, synced by Syncthing only |
 
 Tool: `jk-token` (installed at `~/.local/bin/jk-token`).
 
