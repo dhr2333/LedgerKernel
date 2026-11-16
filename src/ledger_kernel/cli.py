@@ -203,6 +203,59 @@ def _coverage_text(coverage: dict[str, Any]) -> str:
     )
 
 
+def _registry_text(view: dict[str, Any]) -> str:
+    if not view.get("valid"):
+        error = view.get("error") or {}
+        return f"invalid registry  [{error.get('code', 'REGISTRY_INVALID')}] {error.get('message', '')}"
+    counts = view["counts"]
+    lines = [
+        f"registry      {view['registry_revision']}",
+        f"groups        {counts['groups']}",
+        f"accounts      {counts['accounts']}  "
+        f"(active {counts['active']} / archived {counts['archived']})",
+    ]
+    for account in view["accounts"]:
+        lines.append(
+            f"{account['alias']}  ->  {account['account']}  "
+            f"[{account['status']}/{account['mode']}]"
+        )
+    lines.append(f"unmanaged     {', '.join(view['unmanaged_accounts']) or '-'}")
+    if view.get("warnings"):
+        lines.append(f"warnings      {len(view['warnings'])}")
+    return "\n".join(lines)
+
+
+def _registry_plan_text(plan: dict[str, Any]) -> str:
+    counts = plan["counts"]
+    lines = [
+        f"registry      {plan['registry_revision']}",
+        f"ledger        {plan['ledger_revision']}",
+        f"differences   {sum(counts.values())}  "
+        f"({', '.join(f'{code} {count}' for code, count in counts.items()) or 'none'})",
+    ]
+    for item in plan["items"]:
+        alias = f"  {item['alias']}" if item.get("alias") else ""
+        lines.append(f"[{item['severity']}] {item['code']}  {item['account']}{alias}  {item['message']}")
+    actions = plan["actions"]
+    lines.append(
+        "actions       "
+        f"open {len(actions['open'])}  close {len(actions['close'])}  relabel {len(actions['relabel'])}"
+    )
+    return "\n".join(lines)
+
+
+def _registry_resolve_text(result: dict[str, Any]) -> str:
+    if not result.get("found"):
+        suffix = " (ledger account, not in registry)" if result.get("unmanaged") else ""
+        return f"not found: {result['query']}{suffix}"
+    if result["kind"] == "account":
+        return (
+            f"{result['alias']}  ->  {result['account']}  "
+            f"[{result['status']}]  id={result['id']}"
+        )
+    return f"group {result['path']}  alias={result['alias']}  id={result['id']}"
+
+
 def _contracts_show_text(view: dict[str, Any]) -> str:
     lines = [
         f"contract      {view['contract_revision']}",
@@ -320,6 +373,16 @@ def build_parser() -> argparse.ArgumentParser:
     accounts_balance = accounts_sub.add_parser("balance")
     accounts_balance.add_argument("account")
     accounts_balance.add_argument("--as-of")
+    accounts_sub.add_parser(
+        "registry", help="show the account registry (accounts.yaml, schema v2 draft)"
+    )
+    accounts_sub.add_parser(
+        "plan", help="diff the account registry against the ledger (read-only)"
+    )
+    accounts_resolve = accounts_sub.add_parser(
+        "resolve", help="resolve an alias, id, account name or group path"
+    )
+    accounts_resolve.add_argument("name")
     accounts_reconcile = accounts_sub.add_parser(
         "reconcile", help="record an account reconciliation (human confirmed)"
     )
@@ -678,6 +741,12 @@ def run(args: argparse.Namespace) -> Any:
             return kernel.get_account(args.account, _as_date(args.as_of))
         if args.accounts_command == "balance":
             return kernel.get_balance(args.account, _as_date(args.as_of))
+        if args.accounts_command == "registry":
+            return kernel.registry_view()
+        if args.accounts_command == "plan":
+            return kernel.registry_plan()
+        if args.accounts_command == "resolve":
+            return kernel.resolve_account(args.name)
         if args.accounts_command == "reconcile":
             as_of = _as_date(args.as_of)
             if as_of is None:
@@ -821,6 +890,12 @@ def _render(args: argparse.Namespace, result: Any) -> str | None:
             lines.append(f"unmanaged     {', '.join(result['unmanaged_accounts']) or '-'}")
             return "\n".join(lines)
         return "\n".join(_account_text(row) for row in result) or "no accounts"
+    if args.command == "accounts" and args.accounts_command == "registry":
+        return _registry_text(result)
+    if args.command == "accounts" and args.accounts_command == "plan":
+        return _registry_plan_text(result)
+    if args.command == "accounts" and args.accounts_command == "resolve":
+        return _registry_resolve_text(result)
     if args.command == "accounts" and args.accounts_command == "reconcile":
         return _reconcile_text(result)
     if args.command == "accounts" and args.accounts_command == "reconciliation":

@@ -50,6 +50,10 @@ class Config:
     def contracts_path(self) -> Path:
         return self.meta_dir / "contracts.yaml"
 
+    @property
+    def accounts_path(self) -> Path:
+        return self.meta_dir / "accounts.yaml"
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema_version": self.schema_version,

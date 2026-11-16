@@ -53,6 +53,13 @@ from .errors import (
     KernelError,
 )
 from .locks import FileLock
+from .registry import (
+    SCHEMA_VERSION as REGISTRY_SCHEMA_VERSION,
+    load_registry,
+    plan_registry,
+    registry_revision,
+    registry_view,
+)
 from .revision import (
     contract_revision,
     contract_revision_bytes,
@@ -480,6 +487,92 @@ class Kernel:
             "coverage": coverage,
             "warnings": [] if error is not None else contract_warnings(coverage),
         }
+
+    # ---------------------------------------------------------------- registry
+    def registry_view(self) -> dict[str, Any]:
+        """Read-only view of accounts.yaml (schema v2). Never writes."""
+        with self._locked():
+            load = self._ensure_fresh_locked()
+            return self._registry_view_locked(load)
+
+    def _registry_view_locked(self, load: LoadResult) -> dict[str, Any]:
+        path = self.config.accounts_path
+        revision = registry_revision(path)
+        try:
+            registry = load_registry(path)
+        except KernelError as exc:
+            return {
+                "schema_version": REGISTRY_SCHEMA_VERSION,
+                "registry_revision": revision,
+                "valid": False,
+                "error": exc.to_dict(),
+                "counts": {
+                    "groups": 0,
+                    "accounts": 0,
+                    "active": 0,
+                    "archived": 0,
+                    "unmanaged": len(load.accounts),
+                },
+                "groups": [],
+                "accounts": [],
+                "unmanaged_accounts": sorted(load.accounts),
+                "warnings": [],
+            }
+        return registry_view(registry, load, revision=revision)
+
+    def registry_plan(self) -> dict[str, Any]:
+        """Strictly parse the registry and diff it against the ledger (read-only)."""
+        with self._locked():
+            load = self._ensure_fresh_locked()
+            path = self.config.accounts_path
+            registry = load_registry(path)
+            return plan_registry(registry, load, revision=registry_revision(path))
+
+    def resolve_account(self, ref: str) -> dict[str, Any]:
+        """Resolve an alias, id, account name or group path. Read-only."""
+        with self._locked():
+            load = self._ensure_fresh_locked()
+            path = self.config.accounts_path
+            registry = load_registry(path)
+            revision = registry_revision(path)
+            resolved = registry.resolve(ref)
+            if resolved is None:
+                return {
+                    "query": ref,
+                    "found": False,
+                    "registry_revision": revision,
+                    "unmanaged": ref in load.accounts,
+                }
+            kind, node_id = resolved
+            if kind == "account":
+                account = registry.accounts[node_id]
+                return {
+                    "query": ref,
+                    "found": True,
+                    "kind": "account",
+                    "id": account.id,
+                    "alias": account.alias,
+                    "account": account.account,
+                    "status": account.status,
+                    "type": account.type,
+                    "parent": account.parent,
+                    "mode": account.mode,
+                    "successor_of": account.successor_of,
+                    "registry_revision": revision,
+                }
+            group = registry.groups[node_id]
+            return {
+                "query": ref,
+                "found": True,
+                "kind": "group",
+                "id": group.id,
+                "alias": group.alias,
+                "path": group.path,
+                "segment": group.segment,
+                "type": group.type,
+                "parent": group.parent,
+                "registry_revision": revision,
+            }
 
     def preview_contracts(self, text: str) -> dict[str, Any]:
         """Strictly parse candidate contracts text and show what apply would do.

@@ -44,6 +44,7 @@ class AccountInfo:
     booking: str | None
     source_file: str | None
     source_line: int | None
+    meta: Mapping[str, Any] = field(default_factory=dict)
 
     def is_open_on(self, date: dt.date) -> bool:
         if self.open_date is None or date < self.open_date:
@@ -213,6 +214,7 @@ class BeancountAdapter:
                 booking=booking,
                 source_file=_relative_source(meta.get("filename")),
                 source_line=meta.get("lineno"),
+                meta=dict(meta),
             )
         return result
 

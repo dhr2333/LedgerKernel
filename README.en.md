@@ -249,6 +249,21 @@ ledger-kernel accounts list --coverage
 
 Unknown fields in the contract file, invalid account names, and duplicate aliases yield `CONTRACT_INVALID` and block controlled commits (fail-closed); reads still work. v0.1 does not support arbitrary Python rules.
 
+### Account registry (v0.4 draft, read-only)
+
+The v0.4 draft promotes account definitions from a read-only projection to a registry: `.ledger-kernel/accounts.yaml` (schema v2) records groups, accounts, aliases and policies, while the ledger stays the append-only factual record. Only the read-only engine is implemented so far; it never writes the ledger:
+
+```bash
+ledger-kernel accounts registry            # parsed view, revision, unmanaged accounts, warnings
+ledger-kernel accounts plan                # registry vs ledger: missing open/close, alias drift
+ledger-kernel accounts resolve 中行工资卡    # alias/id/account name/group path -> one object
+```
+
+- A missing file is treated as an empty registry; the schema and example are in [v0.4 draft](docs/design/v0.4-account-first-revision.md), section 4.
+- The registry is not the default write path yet: `accounts apply`, `entry` and the account workbench are not implemented and require ADR-021 (delta assertion and digest for account directives).
+- Schema v2 is a pre-release draft and may change before it is frozen; the v1 `contracts.yaml` remains the contract file used by the current policy/review flow and is not read as a registry.
+- `accounts plan` is read-only: it does not write the ledger, change `ledger_revision`, or append audit events. New error code: `REGISTRY_INVALID`.
+
 ### Contract editing (v0.2)
 
 The only write entry point for the contract file is `contracts apply`; no more "edit the YAML and hope":

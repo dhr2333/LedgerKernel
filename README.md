@@ -245,6 +245,21 @@ ledger-kernel accounts list --coverage
 
 契约文件未知字段、无效账户名、重复别名会直接 `CONTRACT_INVALID` 并阻断受控提交（fail-closed）；读取仍可用。v0.1 不支持任意 Python 规则。
 
+### 账户注册表（v0.4 草案，只读）
+
+v0.4 草案把账户定义从“只读派生”提升为注册表权威：`.ledger-kernel/accounts.yaml`（schema v2）记录组、账户、别名与策略，账本仍是事实的 append-only 记录。当前只落地只读引擎，不写账本：
+
+```bash
+ledger-kernel accounts registry            # 解析结果、revision、未登记账户与告警
+ledger-kernel accounts plan                # registry 与账本差异：缺 open/close、别名漂移
+ledger-kernel accounts resolve 中行工资卡    # 别名/ID/账户名/组路径 → 唯一对象
+```
+
+- 文件不存在时视为空注册表；schema 与示例见 [v0.4 草案](docs/design/v0.4-account-first-revision.md) 第 4 节。
+- 注册表尚未成为默认写入路径；`accounts apply`、`entry` 与账户工作台未实现，需先补 ADR-021（账户指令的增量断言与 digest）。
+- schema v2 是预发布草案，冻结前可能变化；v1 `contracts.yaml` 仍是当前策略与审核使用的契约文件，不被当作注册表读取。
+- `accounts plan` 只读：不写账本、不改 `ledger_revision`、不新增审计事件；错误码为 `REGISTRY_INVALID`。
+
 ### 契约编辑（v0.2）
 
 契约文件的唯一写入入口是 `contracts apply`，不再“手改 YAML 后祈祷”：

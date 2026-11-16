@@ -8,6 +8,7 @@ All notable changes are recorded here. The format follows Keep a Changelog; vers
 
 ### Added
 
+- Read-only account registry engine (v0.4 draft M1a): schema v2 parsing/validation for `.ledger-kernel/accounts.yaml` (group tree, aliases, opaque/semantic leaves, successor), alias/id/account-name/group-path resolution, and a read-only registry-vs-ledger diff; new CLI `accounts registry|plan|resolve` and error code `REGISTRY_INVALID`. `accounts apply`, `entry` and the account workbench are not implemented and require ADR-021.
 - Account-layer dogfood protocol upgraded to the v0.2.x round (`docs/dogfood.en.md` / `.md`): account-layer metrics, a per-round record table, and criteria #6-#9; new baseline tool `scripts/dogfood_account_layer.py` (reproducible on the synthetic fixture; `--source` reads a real-ledger copy only).
 - Every `accounts list` row now carries `assertion_status` / `last_assertion` / `reconciliation` (matching `accounts show`); `review --by-account` now uses one bulk read.
 - v0.2 account-layer dogfood baseline report `docs/design/v0.2-dogfood-round2.md`: real-ledger copy with 97 active accounts, 17/17 checks passing, no real data.
