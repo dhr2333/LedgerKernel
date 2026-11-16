@@ -24,14 +24,15 @@ OPENING = """\
 TARGET = "transactions/kernel-import.bean"
 
 
-def make_ledger(base: Path, *, target: str = TARGET, invalid: bool = False) -> Path:
+def make_ledger(base: Path, *, target: str = TARGET, invalid: bool = False,
+                target_header: str = "; kernel import target\n") -> Path:
     base.mkdir(parents=True, exist_ok=True)
     (base / "accounts.bean").write_text(ACCOUNTS, encoding="utf-8")
     (base / "transactions").mkdir(exist_ok=True)
     (base / "transactions" / "2026.bean").write_text(OPENING, encoding="utf-8")
     target_path = base / target
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    target_path.write_text("; kernel import target\n", encoding="utf-8")
+    target_path.write_text(target_header, encoding="utf-8")
     extra = "\n2026-01-03 open This Is Not A Directive\n" if invalid else ""
     (base / "main.bean").write_text(
         'option "operating_currency" "CNY"\n'

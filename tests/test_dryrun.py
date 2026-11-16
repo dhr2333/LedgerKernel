@@ -59,6 +59,17 @@ class DryRunSecurityTests(unittest.TestCase):
         payees = [entry.payee for entry in entries if getattr(entry, "payee", None)]
         self.assertIn('A "Book" \\ Shop', payees)
 
+    def test_duplicate_of_existing_transaction_is_a_warning(self) -> None:
+        first = self.kernel.submit_draft(payload(amount="25.00"), "dup-first", agent_id="a")["draft"]["draft_id"]
+        self.kernel.validate_draft(first)
+        self.kernel.approve_draft(first)
+        self.kernel.commit_draft(first)
+
+        second = self.kernel.submit_draft(payload(amount="25.00"), "dup-second", agent_id="a")["draft"]["draft_id"]
+        validation = self.kernel.validate_draft(second)
+        self.assertEqual(validation["status"], "pass_with_warnings")
+        self.assertIn("DUPLICATE_SUSPECTED", {check["code"] for check in validation["checks"]})
+
     def test_missing_evidence_is_a_warning(self) -> None:
         body = payload()
         body["evidence"] = [{"kind": "file", "locator": "documents/missing.pdf", "sha256": "0" * 64}]

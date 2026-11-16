@@ -9,7 +9,7 @@ from ledger_kernel.errors import KernelError
 from ledger_kernel.kernel import Kernel
 from ledger_kernel.locks import FileLock
 
-from .helpers import TARGET, make_kernel, payload
+from .helpers import TARGET, make_kernel, make_ledger, payload
 
 
 class SimulatedCrash(RuntimeError):
@@ -32,6 +32,66 @@ class CommitTests(unittest.TestCase):
         self.kernel.validate_draft(draft_id)
         self.kernel.approve_draft(draft_id)
         return draft_id
+
+    def test_batch_approvals_carry_forward_on_empty_write_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            root = make_ledger(base, target_header="")
+            kernel = Kernel.init(root, TARGET)
+            try:
+                first = kernel.submit_draft(payload(narration="First entry"), "first", agent_id="a")["draft"]["draft_id"]
+                second = kernel.submit_draft(payload(narration="Second entry", amount="30.00"), "second", agent_id="a")["draft"]["draft_id"]
+                before = kernel.validate_draft(second)
+                kernel.validate_draft(first)
+                kernel.approve_drafts([first, second])
+
+                kernel.commit_draft(first)
+                workflow = kernel.get_draft(second)["workflow"]
+                self.assertEqual(workflow["state"], "Approved")
+
+                new_validation = json.loads(
+                    (base / ".ledger-kernel" / "validations" / f"{workflow['validation_id']}.json").read_text(encoding="utf-8")
+                )
+                self.assertEqual(new_validation["review_digest"], before["review_digest"])
+
+                kernel.commit_draft(second)
+                self.assertEqual(kernel.get_draft(second)["workflow"]["state"], "Committed")
+                text = (base / TARGET).read_text(encoding="utf-8")
+                self.assertIn("First entry", text)
+                self.assertIn("Second entry", text)
+                events = [
+                    json.loads(line)["event_type"]
+                    for line in (base / ".ledger-kernel" / "audit" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+                ]
+                self.assertIn("ApprovalCarriedForward", events)
+            finally:
+                kernel.close()
+
+    def test_identical_batch_entries_keep_their_approvals(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            root = make_ledger(base, target_header="")
+            kernel = Kernel.init(root, TARGET)
+            try:
+                first = kernel.submit_draft(payload(narration="Same entry"), "same-1", agent_id="a")["draft"]["draft_id"]
+                second = kernel.submit_draft(payload(narration="Same entry"), "same-2", agent_id="a")["draft"]["draft_id"]
+                first_validation = kernel.validate_draft(first)
+                second_validation = kernel.validate_draft(second)
+                kernel.approve_drafts([first, second])
+                kernel.commit_draft(first)
+                workflow = kernel.get_draft(second)["workflow"]
+                self.assertEqual(workflow["state"], "Approved")
+                refreshed = json.loads(
+                    (base / ".ledger-kernel" / "validations" / f"{workflow['validation_id']}.json").read_text(encoding="utf-8")
+                )
+                self.assertEqual(refreshed["review_digest"], second_validation["review_digest"])
+                self.assertIn("DUPLICATE_SUSPECTED", {check["code"] for check in refreshed["checks"]})
+                kernel.commit_draft(second)
+                self.assertEqual(kernel.get_draft(second)["workflow"]["state"], "Committed")
+                self.assertEqual((base / TARGET).read_text(encoding="utf-8").count("Same entry"), 2)
+                self.assertTrue(first_validation["status"].startswith("pass"))
+            finally:
+                kernel.close()
 
     def test_external_change_after_approval_blocks_commit(self) -> None:
         draft_id = self.prepared()

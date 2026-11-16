@@ -51,6 +51,66 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 0, output)
         self.assertEqual(kernel.get_draft(draft_id)["workflow"]["state"], "Approved")
 
+    def test_review_lists_and_approves_a_pending_batch(self) -> None:
+        kernel = make_kernel(self.base)
+        draft_ids = []
+        for index, narration in enumerate(("Lunch", "Books")):
+            draft_id = kernel.submit_draft(
+                payload(narration=narration, date=f"2026-01-0{2 + index}"),
+                f"review-{index}",
+                agent_id="a",
+            )["draft"]["draft_id"]
+            kernel.validate_draft(draft_id)
+            draft_ids.append(draft_id)
+
+        code, output = self.run_cli("--ledger", str(self.base), "--json", "review")
+        self.assertEqual(code, 0, output)
+        queue = json.loads(output)
+        self.assertEqual({row["draft_id"] for row in queue["drafts"]}, set(draft_ids))
+
+        code, output = self.run_cli(
+            "--ledger", str(self.base), "--json", "review", *draft_ids,
+            "--approve", "--confirm", ",".join(draft_ids),
+        )
+        self.assertEqual(code, 0, output)
+        for draft_id in draft_ids:
+            self.assertEqual(kernel.get_draft(draft_id)["workflow"]["state"], "Approved")
+
+    def test_draft_template_expands_repeated_fields(self) -> None:
+        kernel = make_kernel(self.base)
+        (self.base / ".ledger-kernel" / "templates.yaml").write_text(
+            "schema_version: 1\n"
+            "templates:\n"
+            "  electricity:\n"
+            "    payee: Electric Utility\n"
+            "    narration: Monthly power\n"
+            "    tags: [Family, Fixed]\n"
+            "    postings:\n"
+            "      - account: Expenses:Food\n"
+            "        units: amount\n"
+            "      - account: Assets:Cash\n"
+            "        units: -amount\n",
+            encoding="utf-8",
+        )
+        code, output = self.run_cli(
+            "--ledger", str(self.base), "--json", "drafts", "submit",
+            "--template", "electricity", "--amount", "99.90", "--date", "2026-01-05", "--key", "tpl-1",
+        )
+        self.assertEqual(code, 0, output)
+        draft = json.loads(output)["draft"]
+        transaction = draft["transactions"][0]
+        self.assertEqual(transaction["payee"], "Electric Utility")
+        self.assertEqual(transaction["tags"], ["Family", "Fixed"])
+        self.assertEqual(transaction["postings"][0]["units"], "99.90")
+        self.assertEqual(transaction["postings"][1]["units"], "-99.90")
+
+    def test_unknown_template_is_rejected(self) -> None:
+        make_kernel(self.base)
+        code, _ = self.run_cli(
+            "--ledger", str(self.base), "drafts", "submit", "--template", "missing", "--amount", "1.00"
+        )
+        self.assertEqual(code, 2)
+
     def test_cli_reports_errors_as_json(self) -> None:
         code, output = self.run_cli("--ledger", str(self.base), "--json", "status")
         self.assertEqual(code, 2)

@@ -8,14 +8,25 @@
 
 - 合成 fixture 账本 `tests/fixtures/ledger`：多层 include、插件、pad/balance 断言、已关闭账户与固定 `write_target`，不含真实数据。
 - 真实账本 dogfood 协议 `docs/dogfood.md`：样本、指标与 v0.2 排序判据。
+- v0.2 范围建议 `docs/design/v0.2-scope.md`：4 周真实账本 dogfood 的五项指标、P0 缺陷与候选排序（2026-11-16 冻结，P0/P1 已落地）。
+- 最小审核入口 `ledger-kernel review`：待审队列、逐笔片段/检查项、`--approve --confirm` 批量批准。
+- 草稿模板与提交入口：`.ledger-kernel/templates.yaml`、`ledger-kernel templates list|show`、`ledger-kernel drafts submit --template|--payload`（ADR-016）。
+- validate 新增建议性 `DUPLICATE_SUSPECTED` 告警：重复流水可见但不阻断（ADR-017）。
+- ADR-014（engine fingerprint 不绑定 Python）、ADR-015（review digest 只覆盖交易正文）、ADR-016（草稿模板）、ADR-017（重复告警）。
 - 端到端脚本 `scripts/e2e_ledger.py` 覆盖提交、外部修改观测与 diff、草稿失效、无效账本阻断；CI 每次构建执行，并有一条 `unittest` 集成用例。
 
 ### Changed
 
+- `engine_fingerprint` 只包含 Beancount 与 ledger-kernel 版本，不再包含 Python 运行时（ADR-014）：审核端换解释器不再使全部 validation 失效。
+- `review_digest` 改为哈希渲染后的交易正文，不再包含追加分隔符（ADR-015）：空 `write_target` 首笔提交后，其余已批准草稿可继续沿用批准。
 - `scripts/e2e_testassets.py` 重命名为 `scripts/e2e_ledger.py`：默认跑合成 fixture，仍可用 `--source <TestAssets>` 跑真实账本副本。
-
 - CI 触发方式明确为 GitHub webhook → 内部 Jenkins Multibranch；构建结果回写为 commit status（context `continuous-integration/jenkins/branch`），配置步骤见 `docs/ci-github-webhook.md`。
 - 新增维护者本地的 Jenkins 令牌轮换约定（`jk-token rotate`，失败关闭、先验证后吊销），凭据不进入仓库。
+
+### Fixed
+
+- 审核端 Python 版本不同触发 `EngineChanged`、9 篇草稿全部失效且批准静默失败。
+- 空 `write_target` 首笔提交后其余草稿 `review_digest` 变化，批量批准只兑现第 1 笔。
 
 ## [0.1.0] - 2026-11-15
 

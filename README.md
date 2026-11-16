@@ -88,6 +88,32 @@ ledger-kernel drafts commit drf_...
 ledger-kernel corrections propose cmt_...   # 生成冲销草稿，仍需 validate/approve/commit
 ```
 
+最小审核入口与草稿模板：
+
+```bash
+ledger-kernel review                          # 待审队列：状态、账户、金额、校验告警
+ledger-kernel review drf_... drf_...          # 逐笔片段、检查项与 diff
+ledger-kernel review drf_... --approve --confirm drf_...
+ledger-kernel templates list
+ledger-kernel drafts submit --template electricity --amount 99.90 --date 2026-11-15
+ledger-kernel drafts submit --payload draft.json
+```
+
+```yaml
+# .ledger-kernel/templates.yaml
+schema_version: 1
+templates:
+  electricity:
+    payee: Electric Utility
+    narration: Monthly power
+    tags: [Family, Fixed]
+    postings:
+      - {account: Expenses:Home:Utilities, units: amount}
+      - {account: Liabilities:CreditCard:Bank:CMB:C0002, units: -amount}
+```
+
+模板只预填重复字段，展开后仍是普通草稿，必须 validate/approve/commit；不绕过审核。validate 对重复流水给出 `DUPLICATE_SUSPECTED` 告警（不阻断），关闭订单与退款配对仍由导入端判断。
+
 批准必须显式确认（`--confirm` 的值必须等于草稿 ID；批量时用逗号分隔的完整列表），非交互模式不会因为“调用了命令”而自动批准。批准绑定 `draft_id + validation_id + ledger_revision + contract_revision`，默认 30 分钟过期。
 
 ## MCP（Agent 适配器）
@@ -140,7 +166,7 @@ Claude Desktop / DSH 等客户端配置示例：
 - [v0.1 设计规格](docs/design/v0.1-spec.md)
 - [v0.1 工程决策冻结与原型实施计划](docs/design/v0.1-implementation-plan.md)
 - [v0.1 实施完成记录](docs/design/v0.1-implementation-report.md)
-- ADR：[ADR-012 增量断言](docs/design/adr/ADR-012-delta-assertion.md)、[ADR-013 已知转移](docs/design/adr/ADR-013-known-transition.md)
+- ADR：[ADR-012 增量断言](docs/design/adr/ADR-012-delta-assertion.md)、[ADR-013 已知转移](docs/design/adr/ADR-013-known-transition.md)、[ADR-014 engine 指纹](docs/design/adr/ADR-014-engine-fingerprint.md)、[ADR-015 review digest](docs/design/adr/ADR-015-review-digest.md)、[ADR-016 草稿模板](docs/design/adr/ADR-016-draft-templates.md)、[ADR-017 重复告警](docs/design/adr/ADR-017-duplicate-warning.md)
 
 这些文档描述 v0.1 原型基线；与代码行为冲突时，以 README、测试和最新 ADR 为准。
 
@@ -150,6 +176,7 @@ Claude Desktop / DSH 等客户端配置示例：
 .ledger-kernel/
 ├── kernel.toml            # 绑定、write_target、审批策略
 ├── contracts.yaml         # 声明式账户契约（schema_version 1）
+├── templates.yaml         # 草稿模板（schema_version 1）
 ├── state.json             # 当前 revision/manifest/状态（可重建）
 ├── kernel.lock            # 内核写入串行锁（flock）
 ├── idempotency.json       # agent + key -> draft_id
@@ -195,7 +222,7 @@ accounts:
 
 | 事项 | v0.1 选择 |
 |---|---|
-| Beancount 版本 | 3.2.x（本机验证 3.2.3），依赖 `>=3.2,<4`；升级须跑真实账本回归并更新 engine fingerprint |
+| Beancount 版本 | 3.2.x（本机验证 3.2.3），依赖 `>=3.2,<4`；升级须跑真实账本回归并更新 engine fingerprint。fingerprint 只含 Beancount 与 ledger-kernel 版本，不含 Python 运行时（ADR-014） |
 | include 闭包 | `loader.load_file()` 的 `options_map["include"]`，并用根文件、entry source、文件系统三重交叉校验；缺失时退化为 entry meta + root 并记录 `closure_source`；拒绝账本目录之外的 include |
 | 外部快照 | 闭包内所有文件的内容寻址 blob；默认上限 512 MiB；当前 manifest、journal、before/after hash 受保护 |
 | 提交原语 | 同目录临时文件 + `fsync` + `os.replace` + 目录 `fsync`；最终 revision 复查；不使用 `O_APPEND`（两套原语不并存） |

@@ -7,7 +7,6 @@ path. It proves *content changed*; it does not prove who changed it.
 
 from __future__ import annotations
 
-import platform
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Iterable, Mapping
@@ -20,8 +19,13 @@ from .util import canonical_json_bytes, sha256_bytes, sha256_file
 
 
 def engine_fingerprint() -> str:
-    """Fingerprint of everything that can change Beancount semantics."""
-    return f"beancount-{beancount.__version__};python-{platform.python_version()};ledger-kernel-{__version__}"
+    """Fingerprint of everything that can change Beancount semantics.
+
+    Deliberately excludes the Python runtime (ADR-014): a reviewer approving
+    from another interpreter must not invalidate every pending validation. The
+    semantic drivers are Beancount's version and this kernel's version.
+    """
+    return f"beancount-{beancount.__version__};ledger-kernel-{__version__}"
 
 
 def manifest_for(root: Path, files: Iterable[Path]) -> dict[str, str]:

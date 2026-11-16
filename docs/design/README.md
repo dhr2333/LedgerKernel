@@ -8,11 +8,16 @@
 - [v0.1 设计规格](v0.1-spec.md)：数据模型、草稿生命周期、Dry-run、提交事务、CLI/MCP。
 - [v0.1 工程决策冻结与原型实施计划](v0.1-implementation-plan.md)：ADR-001～ADR-013、P0-A～P0-E、验收矩阵。
 - [v0.1 实施完成记录](v0.1-implementation-report.md)：实现范围、验证结果、冻结选择与已知限制。
+- [v0.2 范围建议](v0.2-scope.md)：基于 4 周真实账本 dogfood 的五项指标与候选排序（2026-11-16 冻结；P0/P1 已落地）。
 
 ## ADR
 
 - [ADR-012：Dry-run 增量必须与提案逐项一致（防文本注入）](adr/ADR-012-delta-assertion.md)
 - [ADR-013：区分“已知转移”与“外部变化”；批准可在严格条件下沿用](adr/ADR-013-known-transition.md)
+- [ADR-014：engine fingerprint 不绑定 Python 运行时](adr/ADR-014-engine-fingerprint.md)
+- [ADR-015：review digest 只覆盖被审核的交易内容](adr/ADR-015-review-digest.md)
+- [ADR-016：草稿模板只做字段预填，不绕过审核](adr/ADR-016-draft-templates.md)
+- [ADR-017：重复流水只做校验期告警，不阻断提交](adr/ADR-017-duplicate-warning.md)
 
 ## 阅读顺序
 

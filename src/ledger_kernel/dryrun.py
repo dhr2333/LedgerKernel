@@ -260,12 +260,20 @@ def _file_diff(write_target: str, old_text: str, new_text: str) -> str:
 
 
 def review_digest(
-    fragment_sha256: str,
+    rendered_sha256: str,
     accounts: list[str],
     checks: list[dict[str, Any]],
 ) -> str:
+    """Hash of what the human actually reviews.
+
+    Deliberately hashes the rendered transactions, not the append fragment:
+    the fragment includes a leading blank-line separator that depends on the
+    current target text. An empty target gains that separator after the first
+    commit, which used to change the digest and invalidate the rest of a batch
+    (ADR-015). ``fragment_sha256`` still covers the exact appended bytes.
+    """
     payload = {
-        "fragment_sha256": fragment_sha256,
+        "rendered_sha256": rendered_sha256,
         "accounts": sorted(set(accounts)),
         "checks": sorted(
             (
@@ -274,9 +282,67 @@ def review_digest(
                 str(check.get("severity")),
             )
             for check in checks
+            # Advisory only: legitimately repeated entries must not lose an
+            # already-reviewed approval mid-batch (ADR-017).
+            if str(check.get("code")) != "DUPLICATE_SUSPECTED"
         ),
     }
     return "sha256:" + sha256_bytes(canonical_json_bytes(payload))
+
+
+
+def _posting_signature(date, postings) -> tuple:
+    items = []
+    for posting in postings:
+        units = getattr(posting, "units", None)
+        if units is None:
+            continue
+        if hasattr(units, "number"):
+            number, currency = units.number, str(units.currency)
+        else:  # ParsedPosting stores a bare Decimal plus a currency field
+            number, currency = units, str(getattr(posting, "currency", ""))
+        items.append((str(posting.account), abs(number), currency))
+    return (date, tuple(sorted(items)))
+
+
+def _duplicate_checks(checks: list[dict[str, Any]], parsed: ParsedDraft, baseline: LoadResult) -> None:
+    """Warn when the proposal repeats a transaction already in the ledger.
+
+    Matches on date + account + absolute amount (payee may be anonymized), and
+    on duplicates inside the same draft. Warning only: legitimate same-day
+    repeats exist; the reviewer decides.
+    """
+    existing = set()
+    for entry in baseline.entries:
+        if entry.__class__.__name__ != "Transaction":
+            continue
+        existing.add(_posting_signature(entry.date, entry.postings))
+    seen: set[tuple] = set()
+    for transaction in parsed.transactions:
+        signature = _posting_signature(transaction.date, transaction.postings)
+        details = {
+            "date": transaction.date.isoformat(),
+            "postings": [[account, str(amount), currency] for account, amount, currency in signature[1]],
+        }
+        if signature in existing:
+            _check(
+                checks,
+                "DUPLICATE_SUSPECTED",
+                "warning",
+                f"a transaction with the same date, accounts and amounts already exists ({transaction.date.isoformat()})",
+                account=transaction.postings[0].account if transaction.postings else None,
+                details=details,
+            )
+        elif signature in seen:
+            _check(
+                checks,
+                "DUPLICATE_SUSPECTED",
+                "warning",
+                "the draft contains two transactions with the same date, accounts and amounts",
+                account=transaction.postings[0].account if transaction.postings else None,
+                details=details,
+            )
+        seen.add(signature)
 
 
 def dry_run(
@@ -307,12 +373,14 @@ def dry_run(
         override = fault_hook("render_fragment", {"fragment": rendered})
         if isinstance(override, str):
             rendered = override
+    rendered_sha256 = "sha256:" + sha256_bytes(rendered.encode("utf-8"))
     fragment = fragment_for(target_info.text, rendered, newline)
     fragment_sha256 = "sha256:" + sha256_bytes(fragment.encode("utf-8"))
     new_text = target_info.text + fragment
     new_bytes = encode_text_file(new_text, target_info)
 
     review_checks = _evidence_checks(ledger_dir, parsed)
+    _duplicate_checks(review_checks, parsed, baseline)
 
     if baseline.errors:
         _check(
@@ -331,7 +399,7 @@ def dry_run(
                   "file_diff": "", "diff_unavailable": True},
             fragment=fragment,
             fragment_sha256=fragment_sha256,
-            review_digest=review_digest(fragment_sha256, list(parsed.accounts), review_checks),
+            review_digest=review_digest(rendered_sha256, list(parsed.accounts), review_checks),
             candidate=None,
         )
 
@@ -460,7 +528,7 @@ def dry_run(
             diff=diff,
             fragment=fragment,
             fragment_sha256=fragment_sha256,
-            review_digest=review_digest(fragment_sha256, list(parsed.accounts), checks),
+            review_digest=review_digest(rendered_sha256, list(parsed.accounts), checks),
             candidate=candidate,
         )
     finally:

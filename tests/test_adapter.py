@@ -5,12 +5,19 @@ import unittest
 from pathlib import Path
 
 from ledger_kernel.adapter import BeancountAdapter
+from ledger_kernel.revision import engine_fingerprint
 from ledger_kernel.errors import KernelError
 
 from .helpers import make_ledger
 
 
 class AdapterTests(unittest.TestCase):
+    def test_engine_fingerprint_does_not_bind_python_runtime(self) -> None:
+        fingerprint = engine_fingerprint()
+        self.assertNotIn("python", fingerprint)
+        self.assertIn("beancount-", fingerprint)
+        self.assertIn("ledger-kernel-", fingerprint)
+
     def test_load_plain_ledger(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = make_ledger(Path(tmp))

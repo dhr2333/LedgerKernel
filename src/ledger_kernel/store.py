@@ -55,6 +55,12 @@ class Store:
             self.blobs_dir,
         ):
             ensure_dir(path)
+        if not self.templates_path.exists():
+            self.templates_path.write_text(
+                "# LedgerKernel draft templates: prefill repeated merchant/account fields.\n"
+                "schema_version: 1\ntemplates: {}\n",
+                encoding="utf-8",
+            )
         if not self.contracts_path.exists():
             self.contracts_path.write_text(
                 "# LedgerKernel account contracts (v0.1 schema).\n"
@@ -82,6 +88,10 @@ class Store:
     @property
     def contracts_path(self) -> Path:
         return self.config.contracts_path
+
+    @property
+    def templates_path(self) -> Path:
+        return self.root / "templates.yaml"
 
     # ------------------------------------------------------------------ state
     def load_state(self) -> dict[str, Any] | None:

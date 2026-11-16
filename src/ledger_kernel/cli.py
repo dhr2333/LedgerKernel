@@ -15,6 +15,8 @@ from typing import Any, Sequence
 from . import __version__
 from .errors import KernelError
 from .kernel import Kernel
+from .templates import build_payload, load_templates
+from .util import canonical_json_bytes, sha256_bytes
 
 
 def _json_dump(value: Any) -> str:
@@ -134,6 +136,29 @@ def build_parser() -> argparse.ArgumentParser:
     drafts_withdraw.add_argument("--agent")
     drafts_commit = drafts_sub.add_parser("commit")
     drafts_commit.add_argument("draft_ids", nargs="+")
+    drafts_submit = drafts_sub.add_parser("submit", help="submit a JSON payload or expand a template")
+    drafts_submit.add_argument("--payload", help="path to a draft payload JSON file")
+    drafts_submit.add_argument("--template", help="template name from templates.yaml")
+    drafts_submit.add_argument("--amount")
+    drafts_submit.add_argument("--date")
+    drafts_submit.add_argument("--key", help="idempotency key (defaults to a content hash)")
+    drafts_submit.add_argument("--agent", default="cli-agent")
+    drafts_submit.add_argument("--payee")
+    drafts_submit.add_argument("--narration")
+    drafts_submit.add_argument("--tag", action="append", default=[])
+
+    templates = sub.add_parser("templates", help="reusable draft templates")
+    templates_sub = templates.add_subparsers(dest="templates_command", required=True)
+    templates_sub.add_parser("list")
+    templates_show = templates_sub.add_parser("show")
+    templates_show.add_argument("name")
+
+    review = sub.add_parser("review", help="review pending drafts and approve a batch in one place")
+    review.add_argument("draft_ids", nargs="*")
+    review.add_argument("--state", help="limit the queue to one draft state")
+    review.add_argument("--approve", action="store_true", help="approve the named drafts after confirmation")
+    review.add_argument("--confirm")
+    review.add_argument("--note")
 
     sub.add_parser("scan", help="rescan the ledger and record external changes")
 
@@ -168,6 +193,51 @@ def _as_date(value: str | None) -> dt.date | None:
         raise KernelError("SCHEMA_INVALID", f"invalid date: {value}") from exc
 
 
+def _review_payload(kernel: Kernel, draft_ids: Sequence[str], state: str | None) -> dict[str, Any]:
+    """Read-only review view: pending queue or per-draft detail."""
+    if draft_ids:
+        items = []
+        for draft_id in dict.fromkeys(draft_ids):
+            entry = kernel.get_draft(draft_id)
+            validation = entry.get("validation") or {}
+            items.append(
+                {
+                    "draft_id": draft_id,
+                    "state": entry["workflow"].get("state"),
+                    "validation_status": validation.get("status"),
+                    "checks": validation.get("checks") or [],
+                    "fragment": validation.get("fragment"),
+                    "diff": validation.get("diff") or {},
+                    "draft": entry["draft"],
+                }
+            )
+        return {"mode": "detail", "drafts": items}
+
+    allowed = {state} if state else {"Submitted", "NeedsHumanApproval", "Blocked", "Approved"}
+    items = []
+    for row in kernel.list_drafts():
+        if row["state"] not in allowed:
+            continue
+        entry = kernel.get_draft(row["draft_id"])
+        validation = entry.get("validation") or {}
+        draft = entry["draft"]
+        transactions = draft.get("transactions") or []
+        first = transactions[0] if transactions else {}
+        postings = first.get("postings") or []
+        items.append(
+            {
+                **row,
+                "date": first.get("date"),
+                "payee": first.get("payee"),
+                "amount": postings[0].get("units") if postings else None,
+                "currency": postings[0].get("currency") if postings else None,
+                "validation_status": validation.get("status"),
+                "checks": validation.get("checks") or [],
+            }
+        )
+    return {"mode": "queue", "drafts": items}
+
+
 def run(args: argparse.Namespace) -> Any:
     if args.command == "init":
         kernel = Kernel.init(
@@ -193,7 +263,41 @@ def run(args: argparse.Namespace) -> Any:
             return kernel.get_account(args.account, _as_date(args.as_of))
         if args.accounts_command == "balance":
             return kernel.get_balance(args.account, _as_date(args.as_of))
+    if args.command == "templates":
+        available = load_templates(kernel.store.templates_path)
+        if args.templates_command == "list":
+            return [template.to_dict() for template in available.values()]
+        template = available.get(args.name)
+        if template is None:
+            raise KernelError("TEMPLATE_INVALID", f"unknown template: {args.name}")
+        return template.to_dict()
     if args.command == "drafts":
+        if args.drafts_command == "submit":
+            if bool(args.payload) == bool(args.template):
+                raise KernelError("INVALID_STATE", "use exactly one of --payload or --template")
+            if args.template:
+                available = load_templates(kernel.store.templates_path)
+                template = available.get(args.template)
+                if template is None:
+                    raise KernelError("TEMPLATE_INVALID", f"unknown template: {args.template}")
+                entry_date = _as_date(args.date) if args.date else dt.date.today()
+                if entry_date is None:
+                    raise KernelError("SCHEMA_INVALID", "--date is required with --template")
+                payload = build_payload(
+                    template,
+                    amount=args.amount,
+                    entry_date=entry_date,
+                    payee=args.payee,
+                    narration=args.narration,
+                    tags=args.tag,
+                )
+            else:
+                try:
+                    payload = json.loads(Path(args.payload).read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError) as exc:
+                    raise KernelError("SCHEMA_INVALID", f"cannot read payload: {exc}") from exc
+            key = args.key or "cli:" + sha256_bytes(canonical_json_bytes(payload))[:32]
+            return kernel.submit_draft(payload, key, agent_id=args.agent)
         if args.drafts_command == "list":
             return kernel.list_drafts(state=args.state)
         if args.drafts_command == "show":
@@ -211,6 +315,13 @@ def run(args: argparse.Namespace) -> Any:
             return kernel.withdraw_draft(args.draft_id, agent_id=args.agent)
         if args.drafts_command == "commit":
             return kernel.commit_drafts(args.draft_ids)
+    if args.command == "review":
+        if args.approve:
+            if not args.draft_ids:
+                raise KernelError("INVALID_STATE", "--approve requires explicit draft ids")
+            _require_confirm(args.draft_ids, args.confirm)
+            return {"approved": kernel.approve_drafts(args.draft_ids, note=args.note)}
+        return _review_payload(kernel, args.draft_ids, args.state)
     if args.command == "observations":
         if args.observations_command == "list":
             return kernel.list_observations()
@@ -245,6 +356,57 @@ def _render(args: argparse.Namespace, result: Any) -> str | None:
         return "\n".join(rows) or "no observations"
     if args.command == "audit":
         return "\n".join(f"{row['occurred_at']}  {row['event_type']}  {row['event_id']}" for row in result)
+    if args.command == "templates" and args.templates_command == "list":
+        rows = [f"{template['name']:<20} {template['payee'] or '-':<24} {len(template['postings'])} postings" for template in result]
+        return "\n".join(rows) or "no templates"
+    if args.command == "templates" and args.templates_command == "show":
+        return _json_dump(result)
+    if args.command == "drafts" and args.drafts_command == "submit":
+        return f"{result['draft']['draft_id']}  {result['workflow']['state']}"
+    if args.command == "review":
+        if "approved" in result:
+            return "\n".join(
+                f"{row['draft_id']}  {row['workflow'].get('state')}  validation={row['workflow'].get('validation_id')}"
+                for row in result["approved"]
+            ) or "no drafts approved"
+        drafts = result["drafts"]
+        if result["mode"] == "queue":
+            lines = [f"{len(drafts)} draft(s) awaiting review"]
+            for row in drafts:
+                codes = ", ".join(str(check.get("code")) for check in row.get("checks") or []) or "no checks"
+                lines.append(
+                    f"{row['draft_id']}  {row['state']:<20} {str(row.get('validation_status')):<18} "
+                    f"{row.get('date')}  {row.get('amount')} {row.get('currency')}  "
+                    f"{row.get('payee') or '-'}  [{codes}]"
+                )
+            return "\n".join(lines)
+        blocks = []
+        for row in drafts:
+            validation = row.get("validation_status")
+            checks = row.get("checks") or []
+            lines = [f"== {row['draft_id']}  {row['state']}  validation={validation}"]
+            fragment = (row.get("fragment") or "").strip("\n")
+            lines.append(fragment or "(no validated fragment)")
+            if checks:
+                lines.extend(
+                    f"  [{check.get('severity')}] {check.get('code')}: {check.get('message')}" for check in checks
+                )
+            else:
+                lines.append("  no blocking or warning checks")
+            diff = row.get("diff") or {}
+            if diff.get("changed_files"):
+                lines.append("  files: " + ", ".join(diff["changed_files"]))
+            for delta in diff.get("deltas") or []:
+                lines.append(
+                    f"  balance: {delta['account']}  {delta['before']} -> {delta['after']} "
+                    f"({delta['delta']} {delta['currency']})"
+                )
+            file_diff = diff.get("file_diff")
+            if file_diff:
+                lines.append("  diff:")
+                lines.extend("    " + line for line in str(file_diff).splitlines()[:30])
+            blocks.append("\n".join(lines))
+        return "\n\n".join(blocks)
     return None
 
 

@@ -92,6 +92,32 @@ ledger-kernel drafts commit drf_...
 ledger-kernel corrections propose cmt_...   # produces a reversal draft; still needs validate/approve/commit
 ```
 
+Minimal review entry point and draft templates:
+
+```bash
+ledger-kernel review                          # review queue: state, accounts, amount, validation warnings
+ledger-kernel review drf_... drf_...          # per-entry fragment, checks, and diff
+ledger-kernel review drf_... --approve --confirm drf_...
+ledger-kernel templates list
+ledger-kernel drafts submit --template electricity --amount 99.90 --date 2026-11-15
+ledger-kernel drafts submit --payload draft.json
+```
+
+```yaml
+# .ledger-kernel/templates.yaml
+schema_version: 1
+templates:
+  electricity:
+    payee: Electric Utility
+    narration: Monthly power
+    tags: [Family, Fixed]
+    postings:
+      - {account: Expenses:Home:Utilities, units: amount}
+      - {account: Liabilities:CreditCard:Bank:CMB:C0002, units: -amount}
+```
+
+Templates only prefill repeated fields; an expanded draft still needs validate/approve/commit and never bypasses review. Validation reports repeated entries as a `DUPLICATE_SUSPECTED` warning (non-blocking); closed orders and refund pairing remain an import-side decision.
+
 Approval requires explicit confirmation (the value of `--confirm` must equal the draft ID; for batches, pass the complete comma-separated list). Non-interactive mode never approves just because "the command was called". An approval is bound to `draft_id + validation_id + ledger_revision + contract_revision` and expires after 30 minutes by default.
 
 ## MCP (Agent adapter)
@@ -144,7 +170,7 @@ Client configuration example (Claude Desktop / DSH, etc.):
 - [v0.1 design spec](docs/design/v0.1-spec.md)
 - [v0.1 engineering decision freeze and prototype implementation plan](docs/design/v0.1-implementation-plan.md)
 - [v0.1 implementation record](docs/design/v0.1-implementation-report.md)
-- ADRs: [ADR-012 delta assertion](docs/design/adr/ADR-012-delta-assertion.md), [ADR-013 known transition](docs/design/adr/ADR-013-known-transition.md)
+- ADRs: [ADR-012 delta assertion](docs/design/adr/ADR-012-delta-assertion.md), [ADR-013 known transition](docs/design/adr/ADR-013-known-transition.md), [ADR-014 engine fingerprint](docs/design/adr/ADR-014-engine-fingerprint.md), [ADR-015 review digest](docs/design/adr/ADR-015-review-digest.md), [ADR-016 draft templates](docs/design/adr/ADR-016-draft-templates.md), [ADR-017 duplicate warning](docs/design/adr/ADR-017-duplicate-warning.md)
 
 These documents describe the v0.1 prototype baseline and are currently available in Chinese only; where they conflict with code behavior, this README, the tests, and the latest ADRs take precedence.
 
@@ -154,6 +180,7 @@ These documents describe the v0.1 prototype baseline and are currently available
 .ledger-kernel/
 ├── kernel.toml            # binding, write_target, approval policy
 ├── contracts.yaml         # declarative account contracts (schema_version 1)
+├── templates.yaml         # draft templates (schema_version 1)
 ├── state.json             # current revision/manifest/state (rebuildable)
 ├── kernel.lock            # kernel write serialization lock (flock)
 ├── idempotency.json       # agent + key -> draft_id
@@ -199,7 +226,7 @@ Unknown fields in the contract file, invalid account names, and duplicate aliase
 
 | Item | v0.1 choice |
 |---|---|
-| Beancount version | 3.2.x (verified on 3.2.3), dependency `>=3.2,<4`; upgrades require real-ledger regression and an engine fingerprint update |
+| Beancount version | 3.2.x (verified on 3.2.3), dependency `>=3.2,<4`; upgrades require real-ledger regression and an engine fingerprint update. The fingerprint contains Beancount and ledger-kernel versions only, not the Python runtime (ADR-014) |
 | include closure | `options_map["include"]` from `loader.load_file()`, cross-checked by root file, entry source, and the file system; falls back to entry meta + root with a recorded `closure_source` when missing; includes outside the ledger directory are rejected |
 | External snapshots | content-addressed blobs of all files in the closure; default cap 512 MiB; the current manifest, journal, and before/after hashes are protected |
 | Commit primitive | same-directory temp file + `fsync` + `os.replace` + directory `fsync`; final revision recheck; no `O_APPEND` (the two primitives do not coexist) |

@@ -2,6 +2,8 @@
 
 状态：[建议冻结]
 
+> 注：第 5 条的 `review_digest` 组成已由 [ADR-015](ADR-015-review-digest.md) 修订；`engine_fingerprint` 的构成已由 [ADR-014](ADR-014-engine-fingerprint.md) 修订。其余规则不变。
+
 **背景**
 `ledger_revision` 覆盖整个 include 闭包（含 `write_target`），内核每次提交都会改变它。若所有绑定旧 revision 的 validation/approval 都因此失效，一次审 30 笔就要重新确认 30 轮，闭环会比手工记账更慢。
 
