@@ -15,6 +15,7 @@ All notable changes are recorded here. The format follows Keep a Changelog; vers
 - Draft templates and submission entry point: `.ledger-kernel/templates.yaml`, `ledger-kernel templates list|show`, `ledger-kernel drafts submit --template|--payload` (ADR-016).
 - Advisory `DUPLICATE_SUSPECTED` warning at validation: repeated ledger entries are visible but not blocked (ADR-017).
 - ADR-014 (engine fingerprint excludes Python), ADR-015 (review digest covers transaction content), ADR-016 (draft templates), ADR-017 (duplicate warning).
+- v0.2 account-layer design draft `docs/design/v0.2-account-layer.md` plus ADR-018/019/020: contract editing, account state/reconciliation, and account-level review (design first, not implemented).
 - The end-to-end script `scripts/e2e_ledger.py` covers commit, external-change observation with diff, draft invalidation, and blocking commits on an invalid ledger; CI runs it on every build and a `unittest` integration case wraps it.
 
 ### Changed

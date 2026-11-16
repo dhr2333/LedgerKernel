@@ -9,6 +9,7 @@
 - [v0.1 工程决策冻结与原型实施计划](v0.1-implementation-plan.md)：ADR-001～ADR-013、P0-A～P0-E、验收矩阵。
 - [v0.1 实施完成记录](v0.1-implementation-report.md)：实现范围、验证结果、冻结选择与已知限制。
 - [v0.2 范围建议](v0.2-scope.md)：账户语义优先、独立发展；4 周 dogfood 的写入指标与账户层候选（2026-11-16 冻结，方向校准修订 1；P0/P1 已落地）。
+- [v0.2 账户层设计](v0.2-account-layer.md)：契约编辑、账户状态/对账、账户级审核（草案，待评审；未实现）。
 
 ## ADR
 
@@ -18,6 +19,9 @@
 - [ADR-015：review digest 只覆盖被审核的交易内容](adr/ADR-015-review-digest.md)
 - [ADR-016：草稿模板只做字段预填，不绕过审核](adr/ADR-016-draft-templates.md)
 - [ADR-017：重复流水只做校验期告警，不阻断提交](adr/ADR-017-duplicate-warning.md)
+- [ADR-018：对账是工作流事实，由审计事件记录并按日期推导状态](adr/ADR-018-reconciliation-fact.md)
+- [ADR-019：契约编辑走“验证 + CAS + 原子替换 + 审计”](adr/ADR-019-contract-apply.md)
+- [ADR-020：账户级审核是分组视图，不改变批准绑定](adr/ADR-020-account-level-review.md)
 
 ## 阅读顺序
 
