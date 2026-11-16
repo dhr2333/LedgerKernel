@@ -4,7 +4,7 @@
 
 账本文件是财务事实的唯一真相源；内核是所有**自动化写入**的唯一受控入口。用户保留直接编辑账本的最高权限，内核不阻止、不覆盖，只负责发现、记录，并在无法安全归因时明确标记 `external_unknown`。
 
-> 本仓库是 v0.1 原型实现，并在 `Unreleased` 中实现 v0.2 账户层（契约编辑、账户对账、账户级审核）。设计基线——顶层设计摘要、工程决策冻结与原型实施计划、设计规格、实施记录、v0.2 账户层设计与 ADR——以 [`docs/design/`](docs/design/README.md) 为唯一真相源；库外笔记不保留副本。实现覆盖 P0-A～P0-D 及薄 MCP 适配器（P0-E 的最小工具集）。
+> 本仓库是 v0.1 原型实现，自 **v0.2.0（2026-11-16）** 起提供 v0.2 账户层（契约编辑、账户对账、账户级审核）。设计基线——顶层设计摘要、工程决策冻结与原型实施计划、设计规格、实施记录、v0.2 账户层设计与 ADR——以 [`docs/design/`](docs/design/README.md) 为唯一真相源；库外笔记不保留副本。实现覆盖 P0-A～P0-D 及薄 MCP 适配器（P0-E 的最小工具集）。
 
 CI：Jenkins（内部，GitHub webhook 触发，配置见 [ci-github-webhook](docs/ci-github-webhook.md)）· 开发约定：[CONTRIBUTING.md](CONTRIBUTING.md) · Agent 约定：[AGENTS.md](AGENTS.md) · 发布流程：[release-checklist](docs/release-checklist.md) · 版本记录：[CHANGELOG.md](CHANGELOG.md)
 
@@ -173,7 +173,7 @@ Claude Desktop / DSH 等客户端配置示例：
 - ADR：[ADR-012 增量断言](docs/design/adr/ADR-012-delta-assertion.md)、[ADR-013 已知转移](docs/design/adr/ADR-013-known-transition.md)、[ADR-014 engine 指纹](docs/design/adr/ADR-014-engine-fingerprint.md)、[ADR-015 review digest](docs/design/adr/ADR-015-review-digest.md)、[ADR-016 草稿模板](docs/design/adr/ADR-016-draft-templates.md)、[ADR-017 重复告警](docs/design/adr/ADR-017-duplicate-warning.md)
 - v0.2 ADR：[ADR-018 对账是工作流事实](docs/design/adr/ADR-018-reconciliation-fact.md)、[ADR-019 契约编辑](docs/design/adr/ADR-019-contract-apply.md)、[ADR-020 账户级审核](docs/design/adr/ADR-020-account-level-review.md)
 
-这些文档描述 v0.1 原型基线与已实现的 v0.2 账户层（未发布）；与代码行为冲突时，以 README、测试和最新 ADR 为准。
+这些文档描述 v0.1 原型基线与 v0.2 账户层（v0.2.0）；与代码行为冲突时，以 README、测试和最新 ADR 为准。
 
 ## `.ledger-kernel/` 布局
 

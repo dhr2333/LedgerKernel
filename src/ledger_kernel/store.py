@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 from typing import Any, Iterable
 
+from . import __version__
 from .config import Config
 from .contracts import default_contract_yaml
 from .errors import KernelError
@@ -75,7 +76,7 @@ class Store:
                     "ledger_id": self.config.ledger_id,
                     "root_file": self.config.root_file,
                     "write_target": self.config.write_target,
-                    "kernel_version": "0.1.0",
+                    "kernel_version": __version__,
                     "event_hash": "",
                 },
             )

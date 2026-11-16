@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from ledger_kernel import __version__
 from ledger_kernel.errors import KernelError
 from ledger_kernel.kernel import Kernel
 from ledger_kernel.locks import FileLock
@@ -32,6 +33,11 @@ class CommitTests(unittest.TestCase):
         self.kernel.validate_draft(draft_id)
         self.kernel.approve_draft(draft_id)
         return draft_id
+
+    def test_initial_audit_records_package_version(self) -> None:
+        event = self.kernel.store.audit_events()[0]
+        self.assertEqual(event["event_type"], "KernelInitialized")
+        self.assertEqual(event["kernel_version"], __version__)
 
     def test_batch_approvals_carry_forward_on_empty_write_target(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -6,7 +6,7 @@ A local ledger account kernel that wraps a Beancount ledger and provides a close
 
 The ledger file is the single source of truth for financial facts; the kernel is the only **controlled entry point for automation writes**. The user keeps the highest authority to edit the ledger directly — the kernel does not block or overwrite edits, it only discovers and records them, and marks changes it cannot safely attribute as `external_unknown`.
 
-> This repository is the v0.1 prototype implementation, with the v0.2 account layer (contract editing, account reconciliation, account-level review) implemented under `Unreleased`. The design baseline — *Design Summary*, *Engineering Decision Freeze and Prototype Implementation Plan*, *Design Spec Draft*, implementation record, v0.2 account-layer design, and ADRs — has exactly one source of truth: [`docs/design/`](docs/design/README.md). External notes keep no copy of it. The implementation covers P0-A to P0-D plus a thin MCP adapter (the minimal tool set of P0-E).
+> This repository is the v0.1 prototype implementation and, since **v0.2.0 (2026-11-16)**, provides the v0.2 account layer (contract editing, account reconciliation, account-level review). The design baseline — *Design Summary*, *Engineering Decision Freeze and Prototype Implementation Plan*, *Design Spec Draft*, implementation record, v0.2 account-layer design, and ADRs — has exactly one source of truth: [`docs/design/`](docs/design/README.md). External notes keep no copy of it. The implementation covers P0-A to P0-D plus a thin MCP adapter (the minimal tool set of P0-E).
 
 CI: Jenkins (internal, triggered by GitHub webhook; configuration in [ci-github-webhook](docs/ci-github-webhook.en.md)) · Development conventions: [CONTRIBUTING.en.md](CONTRIBUTING.en.md) · Agent conventions: [AGENTS.en.md](AGENTS.en.md) · Release process: [release-checklist](docs/release-checklist.md) · Changelog: [CHANGELOG.en.md](CHANGELOG.en.md)
 
@@ -177,7 +177,7 @@ Client configuration example (Claude Desktop / DSH, etc.):
 - ADRs: [ADR-012 delta assertion](docs/design/adr/ADR-012-delta-assertion.md), [ADR-013 known transition](docs/design/adr/ADR-013-known-transition.md), [ADR-014 engine fingerprint](docs/design/adr/ADR-014-engine-fingerprint.md), [ADR-015 review digest](docs/design/adr/ADR-015-review-digest.md), [ADR-016 draft templates](docs/design/adr/ADR-016-draft-templates.md), [ADR-017 duplicate warning](docs/design/adr/ADR-017-duplicate-warning.md)
 - v0.2 ADRs: [ADR-018 reconciliation is a workflow fact](docs/design/adr/ADR-018-reconciliation-fact.md), [ADR-019 contract apply](docs/design/adr/ADR-019-contract-apply.md), [ADR-020 account-level review](docs/design/adr/ADR-020-account-level-review.md)
 
-These documents describe the v0.1 prototype baseline and the implemented v0.2 account layer (unreleased), and are currently available in Chinese only; where they conflict with code behavior, this README, the tests, and the latest ADRs take precedence.
+These documents describe the v0.1 prototype baseline and the v0.2 account layer (v0.2.0), and are currently available in Chinese only; where they conflict with code behavior, this README, the tests, and the latest ADRs take precedence.
 
 ## `.ledger-kernel/` layout
 

@@ -4,7 +4,7 @@ English | [中文](CHANGELOG.md)
 
 All notable changes are recorded here. The format follows Keep a Changelog; versions follow Semantic Versioning.
 
-## [Unreleased]
+## [0.2.0] - 2026-11-16
 
 ### Added
 
@@ -15,7 +15,7 @@ All notable changes are recorded here. The format follows Keep a Changelog; vers
 - Draft templates and submission entry point: `.ledger-kernel/templates.yaml`, `ledger-kernel templates list|show`, `ledger-kernel drafts submit --template|--payload` (ADR-016).
 - Advisory `DUPLICATE_SUSPECTED` warning at validation: repeated ledger entries are visible but not blocked (ADR-017).
 - ADR-014 (engine fingerprint excludes Python), ADR-015 (review digest covers transaction content), ADR-016 (draft templates), ADR-017 (duplicate warning).
-- v0.2 account-layer design draft `docs/design/v0.2-account-layer.md` plus ADR-018/019/020: contract editing, account state/reconciliation, and account-level review (design first; W1-W3 implemented).
+- v0.2 account-layer design `docs/design/v0.2-account-layer.md` plus ADR-018/019/020: contract editing, account state/reconciliation, and account-level review (W1-W3 implemented and released in v0.2.0).
 - `AGENTS.md` now records the pre-release design convention: before the first stable release, old designs may be overturned without backward compatibility; the convention is not a SKILL.
 - Account-layer design review notes: reconciliation requires no evidence; reconciliation never blocks writes and `hard_deadline` is accepted but ignored; optional declared-balance differences are read-only.
 - v0.2 account-layer implementation plan `docs/design/v0.2-account-layer-plan.md`: work packages, file map, test matrix, and implementation order (W1-W4 implemented; results in section 9).
@@ -28,7 +28,7 @@ All notable changes are recorded here. The format follows Keep a Changelog; vers
 
 ### Changed
 
-- The README title no longer says v0.1 only, and now documents the v0.2 account-layer frozen decisions, acceptance matrix, and known limitations; the design-document index and status now read "v0.1 prototype plus the implemented v0.2 account layer (unreleased)".
+- The README title no longer says v0.1 only, and now documents the v0.2 account-layer frozen decisions, acceptance matrix, and known limitations; the design-document index and status now read "v0.1 prototype plus the v0.2 account layer (v0.2.0)".
 - A contract revision change now explicitly invalidates every pending validation/approval and the next operation revalidates automatically; contract editing never writes the ledger and does not change `ledger_revision`. The default `contracts.yaml` created by `init` now includes `unmanaged_accounts: []` plus a comment; existing contract files load unchanged.
 - `engine_fingerprint` now contains Beancount and ledger-kernel versions only, not the Python runtime (ADR-014): a reviewer on another interpreter no longer invalidates every validation.
 - `review_digest` now hashes the rendered transactions instead of the append fragment (ADR-015): after the first commit to an empty `write_target`, the remaining approved drafts keep their approvals.
@@ -44,6 +44,15 @@ All notable changes are recorded here. The format follows Keep a Changelog; vers
 
 - A reviewer running a different Python version triggered `EngineChanged`, invalidated all 9 drafts, and approval failed silently.
 - After the first commit to an empty `write_target`, the remaining drafts' `review_digest` changed and batch approval honored only the first entry.
+
+#### Compatibility record
+
+- Python ≥3.11; Beancount `>=3.2,<4` (validated on 3.2.3).
+- `engine_fingerprint` = `beancount-<version>;ledger-kernel-<version>` (ADR-014, no Python runtime); upgrading to 0.2.0 changes it: the first operation records `EngineChanged` and pending validations/approvals become invalid while ledger files and the audit chain stay unchanged; revalidate and continue.
+- Contract schema remains `1` with the optional `unmanaged_accounts` field; older kernels reject the unknown field, so all kernel instances must run the same version.
+- `state.json` gains a `reconciliations` cache; when missing or corrupt it is rebuilt from the audit chain, with no manual migration.
+- New commands `contracts show/validate/diff/apply`, `accounts reconcile`, `accounts reconciliation list/revert`, `review --by-account/--account`, and `accounts list --coverage`; new error codes `CONTRACT_CONFLICT` and `RECONCILIATION_INVALID`.
+- Draft schema, journal, validation, and observation record formats are unchanged.
 
 ## [0.1.0] - 2026-11-15
 

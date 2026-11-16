@@ -7,7 +7,7 @@ edit files directly, and such edits are observed, not overwritten.
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 KERNEL_NAME = "ledger-kernel"
 

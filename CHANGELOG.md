@@ -2,7 +2,7 @@
 
 所有重要变更记录在此。格式参考 Keep a Changelog；版本遵循语义化版本。
 
-## [Unreleased]
+## [0.2.0] - 2026-11-16
 
 ### Added
 
@@ -13,7 +13,7 @@
 - 草稿模板与提交入口：`.ledger-kernel/templates.yaml`、`ledger-kernel templates list|show`、`ledger-kernel drafts submit --template|--payload`（ADR-016）。
 - validate 新增建议性 `DUPLICATE_SUSPECTED` 告警：重复流水可见但不阻断（ADR-017）。
 - ADR-014（engine fingerprint 不绑定 Python）、ADR-015（review digest 只覆盖交易正文）、ADR-016（草稿模板）、ADR-017（重复告警）。
-- v0.2 账户层设计草案 `docs/design/v0.2-account-layer.md` 与 ADR-018/019/020：契约编辑、账户状态/对账、账户级审核（设计先行；W1-W3 已实现）。
+- v0.2 账户层设计 `docs/design/v0.2-account-layer.md` 与 ADR-018/019/020：契约编辑、账户状态/对账、账户级审核（W1-W3 已实现并随 v0.2.0 发布）。
 - `AGENTS.md` 明确发布前设计变更约定：正式发布前允许推翻旧设计，不要求向后兼容；该约定不写成 SKILL。
 - 账户层设计评审记录：对账不要求证据；对账永不阻断写入，`hard_deadline` 兼容读取但忽略；支持可选申报余额差异（只读）。
 - v0.2 账户层实施计划 `docs/design/v0.2-account-layer-plan.md`：工作包、文件映射、测试矩阵与实施顺序（W1-W4 已实现，实施结果见第 9 节）。
@@ -26,7 +26,7 @@
 
 ### Changed
 
-- README 标题不再限定 v0.1，补充 v0.2 账户层冻结决策、验收矩阵与已知限制；设计文档索引与文档状态更新为“v0.1 原型 + 已实现的 v0.2 账户层（未发布）”。
+- README 标题不再限定 v0.1，补充 v0.2 账户层冻结决策、验收矩阵与已知限制；设计文档索引与文档状态更新为“v0.1 原型 + v0.2 账户层（v0.2.0）”。
 - 契约 revision 变化时显式失效所有 pending validation/approval，下一次操作自动重验；契约编辑不写 Ledger、不改变 `ledger_revision`。新建内核的默认 `contracts.yaml` 增加 `unmanaged_accounts: []` 与说明注释，旧契约文件无需改动即可加载。
 - `engine_fingerprint` 只包含 Beancount 与 ledger-kernel 版本，不再包含 Python 运行时（ADR-014）：审核端换解释器不再使全部 validation 失效。
 - `review_digest` 改为哈希渲染后的交易正文，不再包含追加分隔符（ADR-015）：空 `write_target` 首笔提交后，其余已批准草稿可继续沿用批准。
@@ -41,6 +41,15 @@
 
 - 审核端 Python 版本不同触发 `EngineChanged`、9 篇草稿全部失效且批准静默失败。
 - 空 `write_target` 首笔提交后其余草稿 `review_digest` 变化，批量批准只兑现第 1 笔。
+
+#### 兼容性记录
+
+- Python ≥3.11；Beancount `>=3.2,<4`（验证于 3.2.3）。
+- `engine_fingerprint` = `beancount-<版本>;ledger-kernel-<版本>`（ADR-014，不含 Python 运行时）；升级到 0.2.0 会使其变化：首次操作记录 `EngineChanged`，pending validation/approval 失效，账本文件与审计链不变，重验即可。
+- 契约 schema 仍为 `1`，新增可选 `unmanaged_accounts`；旧内核会因严格未知字段检查拒绝该字段，所有内核实例须同版本使用。
+- `state.json` 新增 `reconciliations` 缓存：缺失或损坏时从审计链重建，无需手工迁移。
+- 新增命令 `contracts show/validate/diff/apply`、`accounts reconcile`、`accounts reconciliation list/revert`、`review --by-account/--account`、`accounts list --coverage`；新增错误码 `CONTRACT_CONFLICT`、`RECONCILIATION_INVALID`。
+- 草稿 schema、journal、validation、observation 记录格式不变。
 
 ## [0.1.0] - 2026-11-15
 

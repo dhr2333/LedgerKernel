@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ledger-kernel"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local account kernel for Beancount ledgers: proposal, dry-run, human approval, controlled append, audit and recovery."
 readme = "README.md"
 requires-python = ">=3.11"
