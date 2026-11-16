@@ -120,8 +120,11 @@ Tool: `jk-token` (installed at `~/.local/bin/jk-token`).
 ```bash
 jk-token status          # verify the current token and list the account's tokens
 jk-token rotate          # mint a new token → persist and verify it → then revoke the old one
+jk-token exec -- <cmd>   # inject the token via JENKINS_TOKEN and rotate automatically afterwards
 jk-token revoke-others   # revoke every token except the current one
 ```
+
+For "rotate after every use", wrap the work in `jk-token exec -- <command>`: the command receives `JENKINS_URL` / `JENKINS_USER` / `JENKINS_TOKEN`, and the token is rotated and the old one revoked when the command finishes, whether it succeeded or not.
 
 Rules:
 

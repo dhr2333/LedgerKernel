@@ -120,8 +120,11 @@ CI 服务端需要凭据，但**任何令牌都不进入仓库**。维护者与 
 ```bash
 jk-token status          # 验证当前令牌并列出账号下的令牌
 jk-token rotate          # 生成新令牌 → 落盘并校验 → 再吊销旧令牌
+jk-token exec -- <cmd>   # 把令牌注入 JENKINS_TOKEN 等环境变量执行命令，结束后自动轮换
 jk-token revoke-others   # 吊销除当前令牌以外的所有令牌
 ```
+
+需要“每次使用后自动换令牌”时，用 `jk-token exec -- <命令>`：命令拿到 `JENKINS_URL` / `JENKINS_USER` / `JENKINS_TOKEN`，执行完毕（无论成败）都会轮换并吊销旧令牌。
 
 约定：
 
