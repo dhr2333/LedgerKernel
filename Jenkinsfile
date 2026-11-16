@@ -48,6 +48,10 @@ pipeline {
                           # 合成 fixture 的完整写入闭环：提交、外部修改、草稿失效、
                           # 无效账本阻断。不需要真实账本或私有数据。
                           python scripts/e2e_ledger.py
+                          # v0.3 optional external review frontend (independent package)
+                          cd frontends/review-tui
+                          PYTHONPATH=src python -m unittest discover -s tests -t .
+                          cd /workspace
                           ledger-kernel --version
                           ledger-kernel --help > /dev/null
                         '

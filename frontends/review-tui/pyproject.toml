@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ledger-kernel-review-tui"
+version = "0.1.0"
+description = "Minimal standard-library review TUI for LedgerKernel: read-only queue, explicit human approval through the kernel CLI."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "LedgerKernel" }]
+dependencies = []
+
+[project.scripts]
+ledger-review-tui = "ledger_review_tui.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

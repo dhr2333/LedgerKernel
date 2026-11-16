@@ -121,6 +121,18 @@ Templates only prefill repeated fields; an expanded draft still needs validate/a
 
 Approval requires explicit confirmation (the value of `--confirm` must equal the draft ID; for batches, pass the complete comma-separated list). Non-interactive mode never approves just because "the command was called". An approval is bound to `draft_id + validation_id + ledger_revision + contract_revision` and expires after 30 minutes by default.
 
+### Minimal review TUI (v0.3, optional external frontend)
+
+`frontends/review-tui/` is a separate installable package (not part of the kernel install; the kernel does not depend on it). It works only through the existing CLI read-only JSON and approval commands:
+
+```bash
+python3 -m pip install ./frontends/review-tui
+ledger-review-tui --ledger /path/to/ledger          # curses TUI
+ledger-review-tui --ledger /path/to/ledger --list   # non-interactive summary
+```
+
+Boundaries: no server, no accounts, no network; no automatic or account-level batch approval; approval still requires a human to type the same draft_id confirmation as the CLI. Read-only fields and change rules: [v0.3 frontend JSON contract](docs/design/v0.3-frontend-contract.md); usage: [frontend README](frontends/review-tui/README.md).
+
 ## MCP (Agent adapter)
 
 ```bash
@@ -414,6 +426,9 @@ src/ledger_kernel/
 ├── locks.py          # flock
 ├── errors.py         # stable error codes
 └── util.py           # atomic writes, hashes, text, amounts
+
+frontends/
+└── review-tui/       # optional external review TUI (v0.3, separate install; the kernel does not depend on it)
 ```
 
 ## Development
@@ -422,6 +437,9 @@ src/ledger_kernel/
 PYTHONPATH=src python3 -m unittest discover -s tests -t . -v
 PYTHONPATH=src python3 scripts/e2e_ledger.py
 PYTHONPATH=src python3 scripts/e2e_ledger.py --source /path/to/TestAssets
+
+# optional external review frontend (v0.3)
+cd frontends/review-tui && PYTHONPATH=src python3 -m unittest discover -s tests -t .
 ```
 
 Tests do not depend on pytest; only `beancount` and `PyYAML` are required. Tests and E2E run in temporary directories and never modify a real ledger; the synthetic fixture lives in `tests/fixtures/ledger`.

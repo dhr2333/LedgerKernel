@@ -117,6 +117,18 @@ templates:
 
 批准必须显式确认（`--confirm` 的值必须等于草稿 ID；批量时用逗号分隔的完整列表），非交互模式不会因为“调用了命令”而自动批准。批准绑定 `draft_id + validation_id + ledger_revision + contract_revision`，默认 30 分钟过期。
 
+### 极简审核 TUI（v0.3，可选外置前端）
+
+`frontends/review-tui/` 是独立安装包（不进入内核安装、内核不依赖它），通过现有 CLI 的只读 JSON 与批准命令工作：
+
+```bash
+python3 -m pip install ./frontends/review-tui
+ledger-review-tui --ledger /path/to/ledger          # curses TUI
+ledger-review-tui --ledger /path/to/ledger --list   # 非交互摘要
+```
+
+边界：无服务端、无账号、无网络；无自动批准或账户级批量批准；批准仍需人工逐字输入与 CLI 相同的 draft_id 确认串。只读字段与变更规则见 [v0.3 前端只读 JSON 契约](docs/design/v0.3-frontend-contract.md)，用法见 [前端 README](frontends/review-tui/README.md)。
+
 ## MCP（Agent 适配器）
 
 ```bash
@@ -410,6 +422,9 @@ src/ledger_kernel/
 ├── locks.py          # flock
 ├── errors.py         # 稳定错误码
 └── util.py           # 原子写、hash、文本、金额
+
+frontends/
+└── review-tui/       # 可选外置审核 TUI（v0.3，独立安装包；内核不依赖）
 ```
 
 ## 开发
@@ -418,6 +433,9 @@ src/ledger_kernel/
 PYTHONPATH=src python3 -m unittest discover -s tests -t . -v
 PYTHONPATH=src python3 scripts/e2e_ledger.py
 PYTHONPATH=src python3 scripts/e2e_ledger.py --source /path/to/TestAssets
+
+# 可选外置审核前端（v0.3）
+cd frontends/review-tui && PYTHONPATH=src python3 -m unittest discover -s tests -t .
 ```
 
 测试不依赖 pytest；只依赖 `beancount` 与 `PyYAML`。测试与 E2E 全部在临时目录中运行，不会修改真实账本；合成 fixture 位于 `tests/fixtures/ledger`。
