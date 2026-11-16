@@ -18,9 +18,12 @@
 - 账户层设计评审记录：对账不要求证据；对账永不阻断写入，`hard_deadline` 兼容读取但忽略；支持可选申报余额差异（只读）。
 - v0.2 账户层实施计划 `docs/design/v0.2-account-layer-plan.md`：工作包、文件映射、测试矩阵与实施顺序（待实现）。
 - 端到端脚本 `scripts/e2e_ledger.py` 覆盖提交、外部修改观测与 diff、草稿失效、无效账本阻断；CI 每次构建执行，并有一条 `unittest` 集成用例。
+- 契约编辑入口 `contracts show/validate/diff/apply`（v0.2 W1）：双哈希 CAS、严格预校验、原子替换、`ContractChanged` 审计与前后内容 blob；冲突返回新增错误码 `CONTRACT_CONFLICT` 且文件不变（ADR-019）。
+- 契约 schema 在 `schema_version: 1` 内加法新增可选 `unmanaged_accounts`：与 `accounts` 不允许重叠；契约覆盖率与 `unmanaged_accounts` 计数通过 `accounts list --coverage` 展示。
 
 ### Changed
 
+- 契约 revision 变化时显式失效所有 pending validation/approval，下一次操作自动重验；契约编辑不写 Ledger、不改变 `ledger_revision`。新建内核的默认 `contracts.yaml` 增加 `unmanaged_accounts: []` 与说明注释，旧契约文件无需改动即可加载。
 - `engine_fingerprint` 只包含 Beancount 与 ledger-kernel 版本，不再包含 Python 运行时（ADR-014）：审核端换解释器不再使全部 validation 失效。
 - `review_digest` 改为哈希渲染后的交易正文，不再包含追加分隔符（ADR-015）：空 `write_target` 首笔提交后，其余已批准草稿可继续沿用批准。
 - v0.2 范围修订 1：回到“账户是产品核心”，契约编辑、账户状态/对账、账户级审核升为 P1；导入对账、批量性能、metadata 降为支撑项。

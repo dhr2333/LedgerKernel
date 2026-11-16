@@ -20,9 +20,12 @@ All notable changes are recorded here. The format follows Keep a Changelog; vers
 - Account-layer design review notes: reconciliation requires no evidence; reconciliation never blocks writes and `hard_deadline` is accepted but ignored; optional declared-balance differences are read-only.
 - v0.2 account-layer implementation plan `docs/design/v0.2-account-layer-plan.md`: work packages, file map, test matrix, and implementation order (not implemented).
 - The end-to-end script `scripts/e2e_ledger.py` covers commit, external-change observation with diff, draft invalidation, and blocking commits on an invalid ledger; CI runs it on every build and a `unittest` integration case wraps it.
+- Contract editing entry point `contracts show/validate/diff/apply` (v0.2 W1): dual-hash CAS, strict pre-validation, atomic replace, `ContractChanged` audit with before/after blobs; conflicts return the new `CONTRACT_CONFLICT` code and leave the file unchanged (ADR-019).
+- Contract schema extends `schema_version: 1` additively with optional `unmanaged_accounts`: it must not overlap `accounts`; contract coverage and the unmanaged count are shown by `accounts list --coverage`.
 
 ### Changed
 
+- A contract revision change now explicitly invalidates every pending validation/approval and the next operation revalidates automatically; contract editing never writes the ledger and does not change `ledger_revision`. The default `contracts.yaml` created by `init` now includes `unmanaged_accounts: []` plus a comment; existing contract files load unchanged.
 - `engine_fingerprint` now contains Beancount and ledger-kernel versions only, not the Python runtime (ADR-014): a reviewer on another interpreter no longer invalidates every validation.
 - `review_digest` now hashes the rendered transactions instead of the append fragment (ADR-015): after the first commit to an empty `write_target`, the remaining approved drafts keep their approvals.
 - v0.2 scope revision 1: back to "the account is the product core"; contract editing, account state/reconciliation, and account-level review move to P1, while import reconciliation, batch performance, and metadata become supporting items.

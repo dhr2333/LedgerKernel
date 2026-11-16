@@ -59,6 +59,7 @@ class AccountPolicy:
 @dataclass
 class Contract:
     accounts: dict[str, AccountPolicy]
+    unmanaged_accounts: tuple[str, ...] = ()
 
     def policy(self, account: str) -> AccountPolicy | None:
         return self.accounts.get(account)
@@ -179,7 +180,7 @@ def parse_contract(raw: Any) -> Contract:
         raw = {}
     if not isinstance(raw, dict):
         _fail("contracts.yaml must contain an object")
-    allowed = {"schema_version", "accounts"}
+    allowed = {"schema_version", "accounts", "unmanaged_accounts"}
     unknown = set(raw) - allowed
     if unknown:
         _fail(f"contracts.yaml has unsupported fields: {', '.join(sorted(unknown))}")
@@ -200,26 +201,97 @@ def parse_contract(raw: Any) -> Contract:
                 _fail(f"alias {alias!r} is assigned to both {alias_owner[alias]} and {name}")
             alias_owner[alias] = name
         accounts[name] = policy
-    return Contract(accounts=accounts)
+
+    unmanaged = _string_list(raw.get("unmanaged_accounts"), "unmanaged_accounts", max_items=500)
+    for name in unmanaged:
+        if not bc_account.is_valid(name):
+            _fail(f"invalid account name in unmanaged_accounts: {name!r}")
+    overlap = sorted(set(unmanaged) & set(accounts))
+    if overlap:
+        _fail(
+            f"unmanaged_accounts must not overlap accounts: {', '.join(overlap)}",
+            overlap=overlap,
+        )
+    return Contract(accounts=accounts, unmanaged_accounts=unmanaged)
+
+
+def parse_contract_text(text: str) -> Contract:
+    """Strictly parse candidate contracts text without touching the disk."""
+    if not isinstance(text, str) or not text.strip():
+        _fail("contracts.yaml must contain a YAML object")
+    try:
+        raw = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise KernelError(CONTRACT_INVALID, f"cannot parse contracts.yaml: {exc}") from exc
+    return parse_contract(raw)
 
 
 def load_contract(path: Path) -> Contract:
     if not path.exists():
         return Contract(accounts={})
     try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError) as exc:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
         raise KernelError(CONTRACT_INVALID, f"cannot read contracts.yaml: {exc}") from exc
-    return parse_contract(raw)
+    return parse_contract_text(text)
 
 
 def default_contract_yaml() -> str:
     return (
-        "# LedgerKernel account contracts (v0.1 schema).\n"
+        "# LedgerKernel account contracts (schema_version 1).\n"
         "# Keep this file declarative and versioned with your ledger.\n"
+        "# unmanaged_accounts: accounts you know about but do not manage yet.\n"
         "schema_version: 1\n"
+        "unmanaged_accounts: []\n"
         "accounts: {}\n"
     )
+
+
+def contract_coverage(
+    contract: Contract, load: LoadResult, *, today: dt.date | None = None
+) -> dict[str, Any]:
+    """Coverage of *active* ledger accounts by contracts.
+
+    An account is active when it is open today (opened, not closed). Contract
+    entries for accounts that are absent or inactive in the ledger are reported
+    separately; declaring them is allowed so users can prepare for new accounts.
+    """
+    today = today or dt.date.today()
+    ledger_accounts = set(load.accounts)
+    active = sorted(name for name, info in load.accounts.items() if info.is_open_on(today))
+    active_set = set(active)
+    declared_unmanaged = set(contract.unmanaged_accounts)
+    managed = [name for name in active if name in contract.accounts]
+    unmanaged = [name for name in active if name in declared_unmanaged]
+    uncovered = [
+        name for name in active if name not in contract.accounts and name not in declared_unmanaged
+    ]
+    unopened = [name for name in sorted(contract.accounts) if name not in ledger_accounts]
+    inactive = [
+        name for name in sorted(contract.accounts) if name in ledger_accounts and name not in active_set
+    ]
+    return {
+        "active_account_count": len(active),
+        "managed_accounts": managed,
+        "unmanaged_accounts": unmanaged,
+        "uncovered_accounts": uncovered,
+        "unopened_contract_accounts": unopened,
+        "inactive_contract_accounts": inactive,
+        "ratio": None if not active else round(len(managed) / len(active), 4),
+    }
+
+
+def contract_warnings(coverage: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Non-blocking warnings for a parsed contract, derived from coverage."""
+    return [
+        {
+            "code": "CONTRACT_UNKNOWN_ACCOUNT",
+            "severity": "warning",
+            "account": name,
+            "message": f"contract references an account not opened in the ledger: {name}",
+        }
+        for name in coverage.get("unopened_contract_accounts", [])
+    ]
 
 
 def _check(

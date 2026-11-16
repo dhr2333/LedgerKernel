@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .config import Config
+from .contracts import default_contract_yaml
 from .errors import KernelError
 from .util import (
     append_jsonl,
@@ -62,12 +63,7 @@ class Store:
                 encoding="utf-8",
             )
         if not self.contracts_path.exists():
-            self.contracts_path.write_text(
-                "# LedgerKernel account contracts (v0.1 schema).\n"
-                "# Keep this file declarative and versioned with your ledger.\n"
-                "schema_version: 1\naccounts: {}\n",
-                encoding="utf-8",
-            )
+            self.contracts_path.write_text(default_contract_yaml(), encoding="utf-8")
         if not self.audit_path.exists():
             append_jsonl(
                 self.audit_path,

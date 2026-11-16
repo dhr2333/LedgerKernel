@@ -62,11 +62,16 @@ def revision_of(manifest: Mapping[str, str], engine: str | None = None) -> str:
     return "sha256:" + sha256_bytes(canonical_json_bytes(payload))
 
 
+def contract_revision_bytes(data: bytes) -> str:
+    """Contract revision for candidate bytes that are not written yet."""
+    return "sha256:" + sha256_bytes(data)
+
+
 def contract_revision(path: Path) -> str:
     if not path.exists():
         return "sha256:absent"
     try:
-        return "sha256:" + sha256_file(path)
+        return contract_revision_bytes(path.read_bytes())
     except OSError as exc:  # pragma: no cover - permissions are environmental
         raise KernelError("CONTRACT_INVALID", f"cannot hash contracts file: {exc}") from exc
 

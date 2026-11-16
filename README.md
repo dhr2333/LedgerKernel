@@ -197,6 +197,8 @@ Claude Desktop / DSH 等客户端配置示例：
 
 ```yaml
 schema_version: 1
+unmanaged_accounts:
+  - Assets:Savings:Cash
 accounts:
   Assets:Bank:Checking:
     aliases: [工资卡, 主银行卡]
@@ -217,7 +219,31 @@ accounts:
 硬阻断：账户未开立/已关闭、`allowed_agents`、`allowed_currencies`、`allowed_tags`、`required_tags`。
 仅警告：`reconciliation.cadence`、`balance_policy`、未知契约账户、低置信度、证据缺失/哈希不符。
 
+`unmanaged_accounts` 显式声明“知道该账户存在，但暂不纳入契约管理”：不能与 `accounts` 重叠，账户名仍须是合法 Beancount 账户。契约覆盖率 = 有契约的活跃账户 / 活跃账户；`unmanaged_accounts` 单独计数：
+
+```bash
+ledger-kernel accounts list --coverage
+```
+
 契约文件未知字段、无效账户名、重复别名会直接 `CONTRACT_INVALID` 并阻断受控提交（fail-closed）；读取仍可用。v0.1 不支持任意 Python 规则。
+
+### 契约编辑（v0.2）
+
+契约文件的唯一写入入口是 `contracts apply`，不再“手改 YAML 后祈祷”：
+
+```bash
+ledger-kernel contracts show                                  # 解析结果、revision、覆盖率、错误
+ledger-kernel contracts validate --file contracts.new.yaml    # 严格解析；不写文件
+ledger-kernel contracts diff --file contracts.new.yaml        # 统一 diff 与受影响账户
+ledger-kernel contracts apply --file contracts.new.yaml \
+  --expected-current sha256:<current> --confirm sha256:<new> --note "加电费契约"
+```
+
+- `--expected-current`（调用者读到的当前 revision；文件不存在时写 `absent`）与 `--confirm`（新文件完整 SHA-256）必须同时提供且匹配；缺失或不符返回 `CONTRACT_CONFLICT`，文件不变。
+- 写入前严格校验：未知字段、重复别名、非法账户名、cadence/余额区间、`unmanaged_accounts` 重叠均返回 `CONTRACT_INVALID`，不写文件。
+- 写入使用同目录临时文件 + `fsync` + `os.replace` + 目录 `fsync`，持有 `kernel.lock`；旧/新内容进入 `snapshots/blobs/`，并追加 `ContractChanged` 审计（前后 hash、actor、note）。
+- 契约 revision 变化使所有 pending validation/approval 失效，下一次操作自动重验；不沿用旧批准。
+- 契约编辑不写 Ledger、不改变 `ledger_revision`；MCP 不暴露该写入口。
 
 ## 已冻结的工程决策（对应实施计划第 12 节）
 
@@ -297,13 +323,13 @@ PYTHONPATH=src python3 scripts/e2e_ledger.py --source /path/to/TestAssets
 
 ```text
 src/ledger_kernel/
-├── cli.py            # 人工审核 CLI
+├── cli.py            # 人工审核与契约编辑 CLI
 ├── mcp_server.py     # MCP stdio 适配器（只读 + 提案）
 ├── kernel.py         # 用例编排：状态、草稿、批准、提交、恢复
 ├── adapter.py        # Beancount 加载/闭包/账户/余额/规范 entry
 ├── dryrun.py         # 临时工作区、完整校验、ADR-012 增量断言、diff
 ├── schema.py         # 草稿 schema、文本安全、Beancount 渲染
-├── contracts.py      # 声明式账户契约
+├── contracts.py      # 声明式账户契约、解析/校验与覆盖率
 ├── revision.py       # manifest + ledger/contract revision
 ├── store.py          # 草稿/validation/审计/ journal/观测/ blob
 ├── config.py         # kernel.toml

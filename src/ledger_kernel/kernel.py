@@ -10,6 +10,7 @@ import datetime as dt
 import difflib
 import json
 import os
+import re
 import shutil
 import tempfile
 from collections import Counter
@@ -22,13 +23,17 @@ from .config import Config
 from .contracts import (
     Contract,
     account_contract_view,
+    contract_coverage,
+    contract_warnings,
     load_contract,
+    parse_contract_text,
 )
 from .dryrun import FaultHook, copy_ledger_workspace, dry_run, fragment_for, verify_candidate, verify_fragment
 from .errors import (
     APPROVAL_EXPIRED,
     APPROVAL_REQUIRED,
     AUDIT_INTEGRITY,
+    CONTRACT_CONFLICT,
     CONTRACT_INVALID,
     DELTA_MISMATCH,
     EXTERNAL_CHANGE,
@@ -44,6 +49,7 @@ from .errors import (
 from .locks import FileLock
 from .revision import (
     contract_revision,
+    contract_revision_bytes,
     diff_manifests,
     engine_fingerprint,
     revision_of,
@@ -52,6 +58,7 @@ from .revision import (
 from .schema import ParsedDraft, parse_payload, render_fragment
 from .store import Store
 from .util import (
+    atomic_write_bytes,
     canonical_json_bytes,
     ensure_dir,
     encode_text_file,
@@ -73,6 +80,50 @@ ACTIVE_DRAFT_STATES = {"Submitted", "NeedsHumanApproval", "Approved", "Blocked",
 
 def _utcnow() -> dt.datetime:
     return dt.datetime.now(tz=dt.timezone.utc)
+
+
+_HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _canonical_contract_hash(value: Any) -> str | None:
+    """Normalize a contract hash argument; None means missing or malformed.
+
+    Accepted forms: "absent" / "sha256:absent", "sha256:<64 hex>", and bare
+    "<64 hex>". Anything else is rejected as a conflict, never coerced.
+    """
+    if value is None or not isinstance(value, str):
+        return None
+    text = value.strip().lower()
+    if not text:
+        return None
+    if text in {"absent", "sha256:absent"}:
+        return "sha256:absent"
+    if text.startswith("sha256:"):
+        text = text.split(":", 1)[1]
+    return f"sha256:{text}" if _HEX64_RE.match(text) else None
+
+
+def _affected_contracts(current: Contract, new: Contract) -> dict[str, Any]:
+    current_names = set(current.accounts)
+    new_names = set(new.accounts)
+    modified = sorted(
+        name
+        for name in current_names & new_names
+        if account_contract_view(current.accounts[name]) != account_contract_view(new.accounts[name])
+    )
+    old_unmanaged = set(current.unmanaged_accounts)
+    new_unmanaged = set(new.unmanaged_accounts)
+    return {
+        "accounts": {
+            "added": sorted(new_names - current_names),
+            "removed": sorted(current_names - new_names),
+            "modified": modified,
+        },
+        "unmanaged": {
+            "added": sorted(new_unmanaged - old_unmanaged),
+            "removed": sorted(old_unmanaged - new_unmanaged),
+        },
+    }
 
 
 class Kernel:
@@ -261,6 +312,192 @@ class Kernel:
             return self._load_contract_locked()
         except KernelError:
             return Contract(accounts={})
+
+    # --------------------------------------------------------------- contracts
+    def contracts_view(self) -> dict[str, Any]:
+        """Read-only view: parsed contracts, revision, errors, coverage."""
+        with self._locked():
+            load = self._ensure_fresh_locked()
+            return self._contracts_view_locked(load)
+
+    def _contracts_view_locked(self, load: LoadResult) -> dict[str, Any]:
+        contract = self._read_contract_lenient()
+        error = None if self._contract_error is None else self._contract_error.to_dict()
+        coverage = contract_coverage(contract, load)
+        return {
+            "contract_path": str(self.config.contracts_path),
+            "contract_revision": contract_revision(self.config.contracts_path),
+            "schema_version": 1,
+            "valid": error is None,
+            "error": error,
+            "account_count": len(contract.accounts),
+            "accounts": {
+                name: account_contract_view(policy)
+                for name, policy in sorted(contract.accounts.items())
+            },
+            "unmanaged_accounts": list(contract.unmanaged_accounts),
+            "coverage": coverage,
+            "warnings": [] if error is not None else contract_warnings(coverage),
+        }
+
+    def preview_contracts(self, text: str) -> dict[str, Any]:
+        """Strictly parse candidate contracts text and show what apply would do.
+
+        Never writes: used by the contracts validate and diff CLI commands.
+        """
+        with self._locked():
+            load = self._ensure_fresh_locked()
+            preview, _contract = self._preview_contracts_locked(load, text)
+            return preview
+
+    def _preview_contracts_locked(
+        self, load: LoadResult, text: str
+    ) -> tuple[dict[str, Any], Contract]:
+        path = self.config.contracts_path
+        current_revision = contract_revision(path)
+        current_text = ""
+        if path.exists():
+            try:
+                current_text = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError) as exc:
+                raise KernelError(CONTRACT_INVALID, f"cannot read contracts.yaml: {exc}") from exc
+        contract = parse_contract_text(text)
+        after_revision = contract_revision_bytes(text.encode("utf-8"))
+        current_contract = self._read_contract_lenient()
+        coverage = contract_coverage(contract, load)
+        diff = "\n".join(
+            difflib.unified_diff(
+                current_text.splitlines(),
+                text.splitlines(),
+                fromfile=path.name,
+                tofile="contracts.new.yaml",
+                lineterm="",
+            )
+        )
+        preview = {
+            "valid": True,
+            "changed": after_revision != current_revision,
+            "current_revision": current_revision,
+            "contract_revision": after_revision,
+            "account_count": len(contract.accounts),
+            "accounts": {
+                name: account_contract_view(policy)
+                for name, policy in sorted(contract.accounts.items())
+            },
+            "unmanaged_accounts": list(contract.unmanaged_accounts),
+            "coverage": coverage,
+            "warnings": contract_warnings(coverage),
+            "affected": _affected_contracts(current_contract, contract),
+            "diff": diff,
+        }
+        return preview, contract
+
+    def apply_contracts(
+        self,
+        text: str,
+        *,
+        expected_current: str | None = None,
+        confirm: str | None = None,
+        actor: str = "local-user",
+        note: str | None = None,
+    ) -> dict[str, Any]:
+        """Replace contracts.yaml with the given text under dual-hash CAS.
+
+        Both hashes are mandatory: expected_current (the revision the caller
+        read, or "absent") and confirm (the revision of the new bytes). The write
+        is atomic, preceded by content-addressed blobs, followed by a
+        ContractChanged audit event, and it invalidates pending validations.
+        """
+        with self._locked():
+            load = self._ensure_fresh_locked()
+            path = self.config.contracts_path
+            current_revision = contract_revision(path)
+
+            expected = _canonical_contract_hash(expected_current)
+            if expected is None:
+                raise KernelError(
+                    CONTRACT_CONFLICT,
+                    "contracts apply requires --expected-current "
+                    "(use 'absent' when no contracts file exists)",
+                    {"current_revision": current_revision},
+                )
+            if expected != current_revision:
+                raise KernelError(
+                    CONTRACT_CONFLICT,
+                    "contracts.yaml changed since it was read; reload and retry",
+                    {"expected_current": expected, "current_revision": current_revision},
+                )
+
+            preview, contract = self._preview_contracts_locked(load, text)
+            after_revision = preview["contract_revision"]
+            confirmed = _canonical_contract_hash(confirm)
+            if confirmed is None:
+                raise KernelError(
+                    CONTRACT_CONFLICT,
+                    "contracts apply requires --confirm with the SHA-256 of the new contracts file",
+                    {"contract_revision": after_revision},
+                )
+            if confirmed != after_revision:
+                raise KernelError(
+                    CONTRACT_CONFLICT,
+                    "confirmation hash does not match the new contracts file",
+                    {"confirm": confirmed, "contract_revision": after_revision},
+                )
+
+            audit = self.store.verify_audit()
+            if not audit["ok"]:
+                raise KernelError(
+                    AUDIT_INTEGRITY, f"audit log failed integrity check: {audit['error']}"
+                )
+
+            if not preview["changed"]:
+                return {
+                    **preview,
+                    "applied": False,
+                    "audit_event_id": None,
+                    "previous_revision": current_revision,
+                }
+
+            # Recheck the CAS immediately before replacing the file; the lock
+            # only coordinates kernels, not human editors.
+            if contract_revision(path) != current_revision:
+                raise KernelError(
+                    CONTRACT_CONFLICT,
+                    "contracts.yaml changed during apply; reload and retry",
+                    {"expected_current": current_revision},
+                )
+
+            new_bytes = text.encode("utf-8")
+            if path.exists():
+                self.store.put_blob(path.read_bytes())
+            self.store.put_blob(new_bytes)
+            atomic_write_bytes(path, new_bytes)
+            event = self.store.audit_append(
+                "ContractChanged",
+                {
+                    "before_sha256": current_revision,
+                    "after_sha256": after_revision,
+                    "previous_revision": current_revision,
+                    "current_revision": after_revision,
+                    "account_count": len(contract.accounts),
+                    "unmanaged_account_count": len(contract.unmanaged_accounts),
+                    "note": None if note is None else escape_display(str(note))[:500],
+                },
+                actor={"type": "human", "id": actor},
+            )
+            # Contract changes invalidate pending validations/approvals; the
+            # next operation revalidates under the new contract (ADR-019).
+            self._contract = contract
+            self._contract_error = None
+            self._refresh_drafts_locked(load, after_revision, contract=contract, reason="contract")
+            self._state = self._state_from_load(load, after_revision)
+            self.store.save_state(self._state)
+            return {
+                **preview,
+                "applied": True,
+                "audit_event_id": event["event_id"],
+                "previous_revision": current_revision,
+            }
 
     def _ensure_fresh_locked(self) -> LoadResult:
         load = self.adapter.load(self.config.root_path)

@@ -201,6 +201,8 @@ These documents describe the v0.1 prototype baseline and are currently available
 
 ```yaml
 schema_version: 1
+unmanaged_accounts:
+  - Assets:Savings:Cash
 accounts:
   Assets:Bank:Checking:
     aliases: [工资卡, 主银行卡]
@@ -221,7 +223,31 @@ accounts:
 Hard blocks: account not opened/closed, `allowed_agents`, `allowed_currencies`, `allowed_tags`, `required_tags`.
 Warnings only: `reconciliation.cadence`, `balance_policy`, unknown contract accounts, low confidence, missing evidence/mismatched hash.
 
+`unmanaged_accounts` explicitly declares accounts you know exist but do not manage yet: it must not overlap `accounts`, and every name must still be a valid Beancount account. Contract coverage = active accounts with a contract / active accounts; `unmanaged_accounts` is counted separately:
+
+```bash
+ledger-kernel accounts list --coverage
+```
+
 Unknown fields in the contract file, invalid account names, and duplicate aliases yield `CONTRACT_INVALID` and block controlled commits (fail-closed); reads still work. v0.1 does not support arbitrary Python rules.
+
+### Contract editing (v0.2)
+
+The only write entry point for the contract file is `contracts apply`; no more "edit the YAML and hope":
+
+```bash
+ledger-kernel contracts show                                  # parsed view, revision, coverage, errors
+ledger-kernel contracts validate --file contracts.new.yaml    # strict parse; never writes
+ledger-kernel contracts diff --file contracts.new.yaml        # unified diff and affected accounts
+ledger-kernel contracts apply --file contracts.new.yaml \
+  --expected-current sha256:<current> --confirm sha256:<new> --note "add utility contract"
+```
+
+- `--expected-current` (the revision the caller read; use `absent` when no file exists) and `--confirm` (full SHA-256 of the new file) are both mandatory and must match; missing or mismatched values return `CONTRACT_CONFLICT` and leave the file unchanged.
+- Before writing, the candidate is strictly validated: unknown fields, duplicate aliases, invalid account names, invalid cadence/balance ranges, and `unmanaged_accounts` overlap all return `CONTRACT_INVALID` without writing.
+- The write uses a same-directory temp file + `fsync` + `os.replace` + directory `fsync` while holding `kernel.lock`; old/new contents go to `snapshots/blobs/` and a `ContractChanged` audit event records both hashes, actor, and note.
+- A contract revision change invalidates every pending validation/approval; the next operation revalidates automatically and old approvals are never reused.
+- Contract editing never writes the ledger and does not change `ledger_revision`; MCP exposes no such write entry point.
 
 ## Frozen engineering decisions (implementation plan section 12)
 
@@ -301,13 +327,13 @@ PYTHONPATH=src python3 scripts/e2e_ledger.py --source /path/to/TestAssets
 
 ```text
 src/ledger_kernel/
-├── cli.py            # human review CLI
+├── cli.py            # human review and contract-editing CLI
 ├── mcp_server.py     # MCP stdio adapter (read-only + proposals)
 ├── kernel.py         # use-case orchestration: state, drafts, approval, commit, recovery
 ├── adapter.py        # Beancount loading/closure/accounts/balances/normalized entries
 ├── dryrun.py         # temporary workspace, full validation, ADR-012 delta assertion, diff
 ├── schema.py         # draft schema, text safety, Beancount rendering
-├── contracts.py      # declarative account contracts
+├── contracts.py      # declarative account contracts, parsing and coverage
 ├── revision.py       # manifest + ledger/contract revision
 ├── store.py          # drafts/validations/audit/journal/observations/blobs
 ├── config.py         # kernel.toml

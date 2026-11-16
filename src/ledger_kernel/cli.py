@@ -10,10 +10,11 @@ import argparse
 import datetime as dt
 import json
 import sys
+from pathlib import Path
 from typing import Any, Sequence
 
 from . import __version__
-from .errors import KernelError
+from .errors import CONTRACT_CONFLICT, CONTRACT_INVALID, KernelError
 from .kernel import Kernel
 from .templates import build_payload, load_templates
 from .util import canonical_json_bytes, sha256_bytes
@@ -87,6 +88,60 @@ def _account_text(account: dict[str, Any]) -> str:
     return f"{account['account']}  {account.get('lifecycle')}  {balances}"
 
 
+def _coverage_text(coverage: dict[str, Any]) -> str:
+    ratio = coverage.get("ratio")
+    ratio_text = "-" if ratio is None else f"{ratio:.2%}"
+    return (
+        f"active {coverage.get('active_account_count', 0)}  "
+        f"managed {len(coverage.get('managed_accounts') or [])}  "
+        f"unmanaged {len(coverage.get('unmanaged_accounts') or [])}  "
+        f"uncovered {len(coverage.get('uncovered_accounts') or [])}  "
+        f"ratio {ratio_text}"
+    )
+
+
+def _contracts_show_text(view: dict[str, Any]) -> str:
+    lines = [
+        f"contract      {view['contract_revision']}",
+        f"valid         {'yes' if view['valid'] else 'no'}",
+        f"accounts      {view['account_count']}",
+        f"unmanaged     {', '.join(view['unmanaged_accounts']) or '-'}",
+        f"coverage      {_coverage_text(view['coverage'])}",
+    ]
+    error = view.get("error")
+    if error:
+        lines.append(f"error         [{error['code']}] {error['message']}")
+    for warning in view.get("warnings") or []:
+        lines.append(f"warning       {warning['code']}: {warning['message']}")
+    return "\n".join(lines)
+
+
+def _contracts_preview_text(preview: dict[str, Any]) -> str:
+    lines = [
+        f"revision      {preview['current_revision']} -> {preview['contract_revision']}",
+        f"changed       {'yes' if preview['changed'] else 'no'}",
+        f"accounts      {preview['account_count']}",
+        f"unmanaged     {', '.join(preview['unmanaged_accounts']) or '-'}",
+        f"coverage      {_coverage_text(preview['coverage'])}",
+    ]
+    for warning in preview.get("warnings") or []:
+        lines.append(f"warning       {warning['code']}: {warning['message']}")
+    affected = preview.get("affected") or {}
+    account_changes = affected.get("accounts") or {}
+    for key, label in (("added", "+"), ("removed", "-"), ("modified", "~")):
+        if account_changes.get(key):
+            lines.append(f"accounts {label}    {', '.join(account_changes[key])}")
+    unmanaged_changes = affected.get("unmanaged") or {}
+    for key, label in (("added", "+"), ("removed", "-")):
+        if unmanaged_changes.get(key):
+            lines.append(f"unmanaged {label}   {', '.join(unmanaged_changes[key])}")
+    diff = preview.get("diff")
+    if diff:
+        lines.append("")
+        lines.extend(diff.splitlines()[:80])
+    return "\n".join(lines)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ledger-kernel", description="Local account kernel for a Beancount ledger")
     parser.add_argument("--ledger", default=".", help="ledger directory containing .ledger-kernel (default: .)")
@@ -106,6 +161,9 @@ def build_parser() -> argparse.ArgumentParser:
     accounts_sub = accounts.add_subparsers(dest="accounts_command", required=True)
     accounts_list = accounts_sub.add_parser("list")
     accounts_list.add_argument("--as-of")
+    accounts_list.add_argument(
+        "--coverage", action="store_true", help="include contract coverage and unmanaged accounts"
+    )
     accounts_show = accounts_sub.add_parser("show")
     accounts_show.add_argument("account")
     accounts_show.add_argument("--as-of")
@@ -153,6 +211,30 @@ def build_parser() -> argparse.ArgumentParser:
     templates_show = templates_sub.add_parser("show")
     templates_show.add_argument("name")
 
+    contracts = sub.add_parser("contracts", help="inspect and safely edit account contracts")
+    contracts_sub = contracts.add_subparsers(dest="contracts_command", required=True)
+    contracts_sub.add_parser("show", help="show parsed contracts, revision and coverage")
+    contracts_validate = contracts_sub.add_parser(
+        "validate", help="strictly parse a candidate file; never writes"
+    )
+    contracts_validate.add_argument("--file", required=True)
+    contracts_diff = contracts_sub.add_parser(
+        "diff", help="unified diff against the current contracts; never writes"
+    )
+    contracts_diff.add_argument("--file", required=True)
+    contracts_apply = contracts_sub.add_parser(
+        "apply", help="atomically replace contracts.yaml under dual-hash CAS"
+    )
+    contracts_apply.add_argument("--file", required=True)
+    contracts_apply.add_argument(
+        "--expected-current",
+        help="sha256:<revision> the caller read, or 'absent' when no contracts file exists",
+    )
+    contracts_apply.add_argument(
+        "--confirm", help="sha256:<revision> of the new contracts file (human confirmation)"
+    )
+    contracts_apply.add_argument("--note")
+
     review = sub.add_parser("review", help="review pending drafts and approve a batch in one place")
     review.add_argument("draft_ids", nargs="*")
     review.add_argument("--state", help="limit the queue to one draft state")
@@ -191,6 +273,18 @@ def _as_date(value: str | None) -> dt.date | None:
         return dt.date.fromisoformat(value)
     except ValueError as exc:
         raise KernelError("SCHEMA_INVALID", f"invalid date: {value}") from exc
+
+
+def _read_contracts_candidate(path_value: str) -> str:
+    path = Path(path_value)
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise KernelError(
+            CONTRACT_INVALID,
+            f"cannot read candidate contracts file: {exc}",
+            {"path": str(path)},
+        ) from exc
 
 
 def _review_payload(kernel: Kernel, draft_ids: Sequence[str], state: str | None) -> dict[str, Any]:
@@ -258,7 +352,15 @@ def run(args: argparse.Namespace) -> Any:
         raise KernelError("INVALID_STATE", f"unknown corrections command: {args.corrections_command}")
     if args.command == "accounts":
         if args.accounts_command == "list":
-            return kernel.list_accounts(_as_date(args.as_of))
+            rows = kernel.list_accounts(_as_date(args.as_of))
+            if not getattr(args, "coverage", False):
+                return rows
+            view = kernel.contracts_view()
+            return {
+                "accounts": rows,
+                "coverage": view["coverage"],
+                "unmanaged_accounts": view["unmanaged_accounts"],
+            }
         if args.accounts_command == "show":
             return kernel.get_account(args.account, _as_date(args.as_of))
         if args.accounts_command == "balance":
@@ -271,6 +373,33 @@ def run(args: argparse.Namespace) -> Any:
         if template is None:
             raise KernelError("TEMPLATE_INVALID", f"unknown template: {args.name}")
         return template.to_dict()
+    if args.command == "contracts":
+        if args.contracts_command == "show":
+            return kernel.contracts_view()
+        if args.contracts_command == "apply":
+            if not args.expected_current:
+                raise KernelError(
+                    CONTRACT_CONFLICT,
+                    "contracts apply requires --expected-current "
+                    "(use 'absent' when no contracts file exists)",
+                    {"hint": "run ledger-kernel contracts show to read the current revision"},
+                )
+            if not args.confirm:
+                raise KernelError(
+                    CONTRACT_CONFLICT,
+                    "contracts apply requires --confirm with the SHA-256 of the new contracts file",
+                )
+        text = _read_contracts_candidate(args.file)
+        if args.contracts_command == "validate":
+            return {"mode": "validate", **kernel.preview_contracts(text)}
+        if args.contracts_command == "diff":
+            return {"mode": "diff", **kernel.preview_contracts(text)}
+        return kernel.apply_contracts(
+            text,
+            expected_current=args.expected_current,
+            confirm=args.confirm,
+            note=args.note,
+        )
     if args.command == "drafts":
         if args.drafts_command == "submit":
             if bool(args.payload) == bool(args.template):
@@ -339,6 +468,12 @@ def _render(args: argparse.Namespace, result: Any) -> str | None:
     if args.command == "status" and isinstance(result, dict) and "ledger_id" in result:
         return _status_text(result)
     if args.command == "accounts" and args.accounts_command == "list":
+        if isinstance(result, dict):
+            lines = [_account_text(row) for row in result["accounts"]] or ["no accounts"]
+            lines.append("")
+            lines.append(f"coverage      {_coverage_text(result['coverage'])}")
+            lines.append(f"unmanaged     {', '.join(result['unmanaged_accounts']) or '-'}")
+            return "\n".join(lines)
         return "\n".join(_account_text(row) for row in result) or "no accounts"
     if args.command == "drafts" and args.drafts_command == "list":
         rows = [
@@ -356,6 +491,17 @@ def _render(args: argparse.Namespace, result: Any) -> str | None:
         return "\n".join(rows) or "no observations"
     if args.command == "audit":
         return "\n".join(f"{row['occurred_at']}  {row['event_type']}  {row['event_id']}" for row in result)
+    if args.command == "contracts":
+        if args.contracts_command == "show":
+            return _contracts_show_text(result)
+        if args.contracts_command in {"validate", "diff"}:
+            return _contracts_preview_text(result)
+        if result.get("applied"):
+            return (
+                f"applied       {result['previous_revision']} -> {result['contract_revision']}\n"
+                f"audit event   {result['audit_event_id']}"
+            )
+        return "no changes; nothing written"
     if args.command == "templates" and args.templates_command == "list":
         rows = [f"{template['name']:<20} {template['payee'] or '-':<24} {len(template['postings'])} postings" for template in result]
         return "\n".join(rows) or "no templates"
