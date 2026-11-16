@@ -22,6 +22,7 @@ All notable changes are recorded here. The format follows Keep a Changelog; vers
 - `engine_fingerprint` now contains Beancount and ledger-kernel versions only, not the Python runtime (ADR-014): a reviewer on another interpreter no longer invalidates every validation.
 - `review_digest` now hashes the rendered transactions instead of the append fragment (ADR-015): after the first commit to an empty `write_target`, the remaining approved drafts keep their approvals.
 - v0.2 scope revision 1: back to "the account is the product core"; contract editing, account state/reconciliation, and account-level review move to P1, while import reconciliation, batch performance, and metadata become supporting items.
+- Long-term positioning made explicit: an independent local account kernel, with no planned integration with Beancount-Trans or any specific product; the goal is a user-owned ledger that can be read, exported, and taken away.
 - Renamed `scripts/e2e_testassets.py` to `scripts/e2e_ledger.py`: it defaults to the synthetic fixture and still accepts `--source <TestAssets>` for a real-ledger copy.
 - CI triggering is now spelled out as GitHub webhook → internal Jenkins Multibranch; the result is written back as a commit status (context `continuous-integration/jenkins/branch`). Configuration steps: `docs/ci-github-webhook.en.md`.
 - Added a maintainer-local Jenkins token rotation convention (`jk-token rotate`, fail-closed, verify before revoke); credentials never enter the repository.

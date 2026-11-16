@@ -20,6 +20,7 @@
 - `engine_fingerprint` 只包含 Beancount 与 ledger-kernel 版本，不再包含 Python 运行时（ADR-014）：审核端换解释器不再使全部 validation 失效。
 - `review_digest` 改为哈希渲染后的交易正文，不再包含追加分隔符（ADR-015）：空 `write_target` 首笔提交后，其余已批准草稿可继续沿用批准。
 - v0.2 范围修订 1：回到“账户是产品核心”，契约编辑、账户状态/对账、账户级审核升为 P1；导入对账、批量性能、metadata 降为支撑项。
+- 明确长期定位：独立本地账户内核，不计划与 Beancount-Trans 或特定产品集成；目标是让个人拥有可读、可导出、可带走的账本。
 - `scripts/e2e_testassets.py` 重命名为 `scripts/e2e_ledger.py`：默认跑合成 fixture，仍可用 `--source <TestAssets>` 跑真实账本副本。
 - CI 触发方式明确为 GitHub webhook → 内部 Jenkins Multibranch；构建结果回写为 commit status（context `continuous-integration/jenkins/branch`），配置步骤见 `docs/ci-github-webhook.md`。
 - 新增维护者本地的 Jenkins 令牌轮换约定（`jk-token rotate`，失败关闭、先验证后吊销），凭据不进入仓库。

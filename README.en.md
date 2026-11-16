@@ -15,6 +15,7 @@ This document is available in both Chinese and English: `X.md` is Chinese and `X
 ## What this is not
 
 - Not a bookkeeping app, budgeting tool, or spending dashboard.
+- Not tied to a specific frontend or product; CLI/MCP/Python API are generic entry points. The goal is a user-owned ledger that can be read, exported, and taken away, not a write backend for one application.
 - No built-in AI reasoning and no model binding; the Agent lives outside the process and only submits structured drafts.
 - No promise that "an Agent can never write the ledger directly". Under the same OS user, an Agent cannot be reliably distinguished from the user; direct writes are treated as external changes.
 - Git history is not an audit trail, and a hash is not authentication.
