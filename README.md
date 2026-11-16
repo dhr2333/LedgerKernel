@@ -132,7 +132,7 @@ stdio 传输，一行一个 JSON-RPC 消息。暴露：
 - `ledger_submit_draft`
 - `ledger_get_draft_status`
 
-**不暴露**批准、提交、写文件、修改契约的工具。MCP 层不重新实现校验或写入逻辑，只调用 `Kernel` 用例。
+**不暴露**批准、提交、写文件、修改契约、对账的工具。MCP 层不重新实现校验或写入逻辑，只调用 `Kernel` 用例。
 
 Claude Desktop / DSH 等客户端配置示例：
 
@@ -178,7 +178,7 @@ Claude Desktop / DSH 等客户端配置示例：
 ├── kernel.toml            # 绑定、write_target、审批策略
 ├── contracts.yaml         # 声明式账户契约（schema_version 1）
 ├── templates.yaml         # 草稿模板（schema_version 1）
-├── state.json             # 当前 revision/manifest/状态（可重建）
+├── state.json             # 当前 revision/manifest/状态与 reconciliations 缓存（可重建）
 ├── kernel.lock            # 内核写入串行锁（flock）
 ├── idempotency.json       # agent + key -> draft_id
 ├── drafts/<id>.json       # 不可变提案正文
@@ -244,6 +244,26 @@ ledger-kernel contracts apply --file contracts.new.yaml \
 - 写入使用同目录临时文件 + `fsync` + `os.replace` + 目录 `fsync`，持有 `kernel.lock`；旧/新内容进入 `snapshots/blobs/`，并追加 `ContractChanged` 审计（前后 hash、actor、note）。
 - 契约 revision 变化使所有 pending validation/approval 失效，下一次操作自动重验；不沿用旧批准。
 - 契约编辑不写 Ledger、不改变 `ledger_revision`；MCP 不暴露该写入口。
+
+### 账户对账（v0.2）
+
+对账是**工作流事实**，不是 Beancount 指令：`accounts reconcile` 追加 `AccountReconciled` 审计事件，`accounts reconciliation revert` 追加 `AccountReconciliationReverted`；两者都不写 Ledger、不改变 `ledger_revision`，审计历史永不删除或改写。
+
+```bash
+ledger-kernel accounts reconcile Assets:Bank:Checking --as-of 2026-11-30 \
+  --declared CNY=1234.56 --declared USD=100.00 --note "与银行 App 一致" \
+  --confirm Assets:Bank:Checking
+ledger-kernel accounts reconciliation list Assets:Bank:Checking
+ledger-kernel accounts reconciliation revert rec_... --reason "余额抄错" --confirm rec_...
+```
+
+- 记录字段：`reconciliation_id`、`account`、`as_of`、`ledger_balances`（该账户 `as_of` 日终余额，多币种）、`declared_balances`（可选申报余额）、`differences = declared - ledger`（按申报币种逐项）、`declared_not_in_ledger`（申报币种不在账本余额时按 ledger=0 计算并在此列出）、`ledger_revision`、`contract_revision`、`actor`（`human/local-user`）、`recorded_at`、`note`（可选）。金额一律使用十进制字符串；`float` 或非法金额返回 `RECONCILIATION_INVALID`。
+- 对账状态由契约 `policy.reconciliation.cadence`（`weekly/monthly/quarterly/yearly`）与最近有效记录推导：`not_configured` / `never` / `current` / `overdue`；`next_due = last.as_of + cadence_days`；`difference_status` 为 `none/zero/nonzero`。`accounts show` 同时返回 `assertion_status`（`unset`/`asserted`）、`last_assertion`（最近一条 Beancount `balance` 指令的日期与金额；没有则为 `null`）与 `reconciliation` 视图；断言失败属于全局 `LedgerInvalid`，不在账户视图伪装通过。
+- 同一账户同一 `as_of` 只允许一条有效记录（先撤销再重记）；只能撤销该账户最新的有效记录，撤销后状态回退到上一条记录，历史记录仍保留在审计链中。
+- 前置条件：账本加载无错误、账户在 `as_of` 已开立未关闭、`as_of <= today`；否则返回 `RECONCILIATION_INVALID` 且不写入任何记录。对账不要求证据，`note` 可选。
+- **对账永不阻断**：状态只用于提示、排序与审核视图，`CONTRACT_RECONCILIATION` 仅在 `never`/`overdue` 时警告；`hard_deadline` 兼容读取但被忽略。申报差异只记录、只展示，不自动生成调整分录、不自动提交；需要调整时仍走草稿 → validate → approve → commit。
+- `state.json.reconciliations` 是可重建缓存；缺失或损坏时从审计事件重建，读取以审计链为准。
+- `accounts reconcile` / `accounts reconciliation revert` 要求 `--confirm` 等于账户名 / `reconciliation_id`，非交互模式不会自动确认；MCP 不暴露对账写入口。
 
 ## 已冻结的工程决策（对应实施计划第 12 节）
 

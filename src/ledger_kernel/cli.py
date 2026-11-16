@@ -10,11 +10,12 @@ import argparse
 import datetime as dt
 import json
 import sys
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Sequence
 
 from . import __version__
-from .errors import CONTRACT_CONFLICT, CONTRACT_INVALID, KernelError
+from .errors import CONTRACT_CONFLICT, CONTRACT_INVALID, RECONCILIATION_INVALID, KernelError
 from .kernel import Kernel
 from .templates import build_payload, load_templates
 from .util import canonical_json_bytes, sha256_bytes
@@ -60,6 +61,105 @@ def _require_confirm(draft_ids: Sequence[str], confirm: str | None) -> None:
     entered = input(f"Type the draft id(s) to approve [{expected}]: ").strip()
     if entered != expected:
         raise KernelError("INVALID_STATE", "confirmation did not match; approval aborted")
+
+
+def _require_explicit_confirm(expected: str, confirm: str | None, *, action: str) -> None:
+    """Require an exact human confirmation; never auto-confirm in non-interactive mode."""
+    if confirm is not None:
+        if confirm.strip() != expected:
+            raise KernelError(
+                "INVALID_STATE",
+                f"confirmation does not match the {action}; aborted",
+                {"expected": expected},
+            )
+        return
+    if not sys.stdin.isatty():
+        raise KernelError(
+            "INVALID_STATE",
+            f"{action} requires --confirm with the exact value in non-interactive mode",
+            {"expected": expected},
+        )
+    entered = input(f"Type {expected!r} to {action}: ").strip()
+    if entered != expected:
+        raise KernelError("INVALID_STATE", "confirmation did not match; aborted")
+
+
+def _parse_declared(values: Sequence[str] | None) -> dict[str, Decimal] | None:
+    """Parse repeatable ``--declared CUR=VALUE`` into Decimal amounts."""
+    if not values:
+        return None
+    declared: dict[str, Decimal] = {}
+    for item in values:
+        currency, separator, raw = str(item).partition("=")
+        currency = currency.strip()
+        if not separator or not currency or not raw.strip():
+            raise KernelError(
+                RECONCILIATION_INVALID,
+                f"--declared must be CUR=VALUE: {item!r}",
+            )
+        if currency in declared:
+            raise KernelError(
+                RECONCILIATION_INVALID, f"duplicate --declared currency: {currency}"
+            )
+        try:
+            amount = Decimal(raw.strip())
+        except (InvalidOperation, ValueError):
+            raise KernelError(
+                RECONCILIATION_INVALID,
+                f"--declared value is not a decimal amount: {raw!r}",
+            ) from None
+        if not amount.is_finite():
+            raise KernelError(
+                RECONCILIATION_INVALID, f"--declared value must be finite: {raw!r}"
+            )
+        declared[currency] = amount
+    return declared
+
+
+def _balances_text(balances: dict[str, Any] | None) -> str:
+    return ", ".join(f"{amount} {currency}" for currency, amount in sorted((balances or {}).items())) or "-"
+
+
+def _reconcile_text(result: dict[str, Any]) -> str:
+    record = result["record"]
+    view = result["reconciliation"]
+    lines = [
+        f"reconciled    {record['reconciliation_id']}  {record['account']}  as_of {record['as_of']}",
+        f"ledger        {_balances_text(record.get('ledger_balances'))}",
+        f"declared      {_balances_text(record.get('declared_balances'))}",
+        f"differences   {_balances_text(record.get('differences'))}",
+        f"status        {view['status']}  difference={view['difference_status']}  "
+        f"next_due={view['next_due'] or '-'}",
+        f"ledger rev    {record['ledger_revision']}",
+        f"audit event   {result['audit_event_id']}",
+    ]
+    if record.get("declared_not_in_ledger"):
+        lines.insert(4, "not in ledger " + ", ".join(record["declared_not_in_ledger"]))
+    if record.get("note"):
+        lines.append(f"note          {record['note']}")
+    return "\n".join(lines)
+
+
+def _reconciliation_list_text(rows: Sequence[dict[str, Any]]) -> str:
+    lines = [
+        f"{row['reconciliation_id']}  as_of {row['as_of']}  recorded {row['recorded_at']}  "
+        f"ledger {_balances_text(row.get('ledger_balances'))}  "
+        f"declared {_balances_text(row.get('declared_balances'))}  "
+        f"differences {_balances_text(row.get('differences'))}"
+        for row in rows
+    ]
+    return "\n".join(lines) or "no reconciliations"
+
+
+def _revert_text(result: dict[str, Any]) -> str:
+    view = result["reconciliation"]
+    return (
+        f"reverted      {result['reconciliation_id']}  {result['account']}  as_of {result['as_of']}\n"
+        f"reason        {result['reason']}\n"
+        f"status        {view['status']}  difference={view['difference_status']}  "
+        f"next_due={view['next_due'] or '-'}\n"
+        f"audit event   {result['audit_event_id']}"
+    )
 
 
 def _status_text(status: dict[str, Any]) -> str:
@@ -170,6 +270,34 @@ def build_parser() -> argparse.ArgumentParser:
     accounts_balance = accounts_sub.add_parser("balance")
     accounts_balance.add_argument("account")
     accounts_balance.add_argument("--as-of")
+    accounts_reconcile = accounts_sub.add_parser(
+        "reconcile", help="record an account reconciliation (human confirmed)"
+    )
+    accounts_reconcile.add_argument("account")
+    accounts_reconcile.add_argument("--as-of", required=True)
+    accounts_reconcile.add_argument(
+        "--declared",
+        action="append",
+        default=[],
+        metavar="CUR=VALUE",
+        help="declared end-of-day balance; repeat for multiple currencies",
+    )
+    accounts_reconcile.add_argument("--note")
+    accounts_reconcile.add_argument("--confirm", help="must equal the account name")
+    accounts_reconciliation = accounts_sub.add_parser(
+        "reconciliation", help="inspect and revert account reconciliations"
+    )
+    accounts_reconciliation_sub = accounts_reconciliation.add_subparsers(
+        dest="reconciliation_command", required=True
+    )
+    accounts_reconciliation_list = accounts_reconciliation_sub.add_parser("list")
+    accounts_reconciliation_list.add_argument("account")
+    accounts_reconciliation_revert = accounts_reconciliation_sub.add_parser("revert")
+    accounts_reconciliation_revert.add_argument("reconciliation_id")
+    accounts_reconciliation_revert.add_argument("--reason", required=True)
+    accounts_reconciliation_revert.add_argument(
+        "--confirm", help="must equal the reconciliation id"
+    )
 
     drafts = sub.add_parser("drafts", help="draft lifecycle")
     drafts_sub = drafts.add_subparsers(dest="drafts_command", required=True)
@@ -365,6 +493,31 @@ def run(args: argparse.Namespace) -> Any:
             return kernel.get_account(args.account, _as_date(args.as_of))
         if args.accounts_command == "balance":
             return kernel.get_balance(args.account, _as_date(args.as_of))
+        if args.accounts_command == "reconcile":
+            as_of = _as_date(args.as_of)
+            if as_of is None:
+                raise KernelError(RECONCILIATION_INVALID, "accounts reconcile requires --as-of")
+            _require_explicit_confirm(
+                args.account, args.confirm, action="reconciliation"
+            )
+            return kernel.reconcile_account(
+                args.account,
+                as_of=as_of,
+                declared=_parse_declared(args.declared),
+                note=args.note,
+            )
+        if args.accounts_command == "reconciliation":
+            if args.reconciliation_command == "list":
+                return kernel.list_reconciliations(args.account)
+            if args.reconciliation_command == "revert":
+                _require_explicit_confirm(
+                    args.reconciliation_id,
+                    args.confirm,
+                    action="reconciliation revert",
+                )
+                return kernel.revert_reconciliation(
+                    args.reconciliation_id, reason=args.reason
+                )
     if args.command == "templates":
         available = load_templates(kernel.store.templates_path)
         if args.templates_command == "list":
@@ -475,6 +628,12 @@ def _render(args: argparse.Namespace, result: Any) -> str | None:
             lines.append(f"unmanaged     {', '.join(result['unmanaged_accounts']) or '-'}")
             return "\n".join(lines)
         return "\n".join(_account_text(row) for row in result) or "no accounts"
+    if args.command == "accounts" and args.accounts_command == "reconcile":
+        return _reconcile_text(result)
+    if args.command == "accounts" and args.accounts_command == "reconciliation":
+        if args.reconciliation_command == "list":
+            return _reconciliation_list_text(result)
+        return _revert_text(result)
     if args.command == "drafts" and args.drafts_command == "list":
         rows = [
             f"{row['draft_id']}  {row['state']:<20} stale={str(row['stale']).lower():<5} "

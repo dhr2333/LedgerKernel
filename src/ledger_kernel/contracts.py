@@ -312,10 +312,17 @@ def evaluate_contract(
     agent_id: str,
     load: LoadResult,
     balances_after: Mapping[tuple[str, str], Decimal],
-    last_posting_dates: Mapping[str, dt.date],
+    reconciliation_status: Mapping[str, str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Run deterministic contract checks. Returns check records."""
+    """Run deterministic contract checks. Returns check records.
+
+    ``CONTRACT_RECONCILIATION`` is derived from the account reconciliation
+    state (ADR-018), not from the last posting date: only ``never`` and
+    ``overdue`` warn, and the check is always advisory. A missing status entry
+    is treated as ``never`` so an absent reconciliation record stays visible.
+    """
     checks: list[dict[str, Any]] = []
+    reconciliation_status = reconciliation_status or {}
     known_accounts: set[str] = set(load.accounts)
     for name in contract.accounts:
         if name not in known_accounts:
@@ -371,13 +378,21 @@ def evaluate_contract(
                     )
             cadence = policy.reconciliation.cadence
             if cadence:
-                last = last_posting_dates.get(posting.account)
-                if last is not None and (transaction.date - last).days > CADENCE_DAYS[cadence]:
+                status = reconciliation_status.get(posting.account, "never")
+                if status == "never":
                     _check(
                         checks,
                         "CONTRACT_RECONCILIATION",
                         "warning",
-                        f"{posting.account} was last posted {last.isoformat()}, beyond the {cadence} reconciliation cadence",
+                        f"{posting.account} has no reconciliation record for the {cadence} cadence",
+                        account=posting.account,
+                    )
+                elif status == "overdue":
+                    _check(
+                        checks,
+                        "CONTRACT_RECONCILIATION",
+                        "warning",
+                        f"{posting.account} reconciliation is overdue for the {cadence} cadence",
                         account=posting.account,
                     )
             balance_policy = policy.balance_policy

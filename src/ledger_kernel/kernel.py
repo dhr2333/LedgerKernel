@@ -14,13 +14,18 @@ import re
 import shutil
 import tempfile
 from collections import Counter
+from collections.abc import Mapping as MappingABC
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Iterable, Mapping
+
+from beancount.core.amount import CURRENCY_RE as _BEANCOUNT_CURRENCY_RE
 
 from . import __version__
 from .adapter import AccountInfo, BeancountAdapter, LoadResult
 from .config import Config
 from .contracts import (
+    CADENCE_DAYS,
     Contract,
     account_contract_view,
     contract_coverage,
@@ -40,6 +45,7 @@ from .errors import (
     INVALID_STATE,
     LEDGER_INVALID,
     LEDGER_LOAD_FAILED,
+    RECONCILIATION_INVALID,
     RECOVERY_REQUIRED,
     SCHEMA_INVALID,
     STALE_REVISION,
@@ -63,6 +69,7 @@ from .util import (
     ensure_dir,
     encode_text_file,
     escape_display,
+    format_amount,
     fsync_dir,
     is_within,
     new_id,
@@ -123,6 +130,137 @@ def _affected_contracts(current: Contract, new: Contract) -> dict[str, Any]:
             "added": sorted(new_unmanaged - old_unmanaged),
             "removed": sorted(old_unmanaged - new_unmanaged),
         },
+    }
+
+
+_CURRENCY_RE = re.compile(rf"^(?:{_BEANCOUNT_CURRENCY_RE})$")
+RECONCILIATION_EVENT_TYPES = {"AccountReconciled", "AccountReconciliationReverted"}
+_RECONCILIATION_CACHE_KEYS = ("reconciliation_id", "account", "as_of", "recorded_at")
+
+
+def _reconciliations_cache_valid(value: Any) -> bool:
+    """Structural check of the derived ``state.json.reconciliations`` cache.
+
+    The cache is never the source of truth; it only has to be well-formed enough
+    to be replaced by a rebuild from the audit chain when it is not.
+    """
+    if not isinstance(value, list):
+        return False
+    for row in value:
+        if not isinstance(row, dict):
+            return False
+        if not all(isinstance(row.get(key), str) for key in _RECONCILIATION_CACHE_KEYS):
+            return False
+        if not isinstance(row.get("ledger_balances"), dict):
+            return False
+        for key in ("declared_balances", "differences"):
+            if row.get(key) is not None and not isinstance(row.get(key), dict):
+                return False
+    return True
+
+
+def _differences_are_zero(differences: Mapping[str, Any]) -> bool:
+    try:
+        return all(Decimal(str(value)) == 0 for value in differences.values())
+    except (InvalidOperation, ValueError):
+        return False
+
+
+def _reconciliation_record_from_event(event: Mapping[str, Any]) -> dict[str, Any]:
+    """Project an ``AccountReconciled`` audit event into a record."""
+    declared = event.get("declared_balances")
+    if not isinstance(declared, dict):
+        declared = None
+    differences = event.get("differences")
+    if not isinstance(differences, dict):
+        differences = None
+    ledger_balances = event.get("ledger_balances")
+    if not isinstance(ledger_balances, dict):
+        ledger_balances = {}
+    declared_not_in_ledger = event.get("declared_not_in_ledger")
+    if not isinstance(declared_not_in_ledger, (list, tuple)):
+        declared_not_in_ledger = []
+    return {
+        "reconciliation_id": str(event.get("reconciliation_id")),
+        "account": str(event.get("account")),
+        "as_of": str(event.get("as_of")),
+        "ledger_balances": {
+            str(key): str(value) for key, value in ledger_balances.items()
+        },
+        "declared_balances": None
+        if declared is None
+        else {str(key): str(value) for key, value in declared.items()},
+        "differences": None
+        if differences is None
+        else {str(key): str(value) for key, value in differences.items()},
+        "declared_not_in_ledger": [str(currency) for currency in declared_not_in_ledger],
+        "ledger_revision": event.get("ledger_revision"),
+        "contract_revision": event.get("contract_revision"),
+        "actor": event.get("actor"),
+        "recorded_at": str(event.get("occurred_at")),
+        "note": event.get("note"),
+        "status": "valid",
+        "reverted_at": None,
+        "revert_reason": None,
+        "revert_event_id": None,
+    }
+
+
+def _reconciliation_view(
+    contract: Contract,
+    account: str,
+    records: Iterable[Mapping[str, Any]],
+    today: dt.date,
+) -> dict[str, Any]:
+    """Derive the account reconciliation view (design 3.3) from valid records."""
+    valid = [
+        record
+        for record in records
+        if record.get("account") == account and record.get("status") == "valid"
+    ]
+    policy = contract.policy(account)
+    cadence = None if policy is None else policy.reconciliation.cadence
+    last = max(
+        valid,
+        key=lambda record: (str(record.get("as_of")), str(record.get("recorded_at"))),
+        default=None,
+    )
+    difference_status = "none"
+    if last is not None and last.get("differences") is not None:
+        difference_status = "zero" if _differences_are_zero(last["differences"]) else "nonzero"
+    next_due: str | None = None
+    if cadence is not None and last is not None:
+        last_date = dt.date.fromisoformat(str(last["as_of"]))
+        next_due = (last_date + dt.timedelta(days=CADENCE_DAYS[cadence])).isoformat()
+    status = "not_configured"
+    if cadence is not None:
+        if last is None:
+            status = "never"
+        elif next_due is not None and today <= dt.date.fromisoformat(next_due):
+            status = "current"
+        else:
+            status = "overdue"
+    last_view = None
+    if last is not None:
+        last_view = {
+            "reconciliation_id": last["reconciliation_id"],
+            "as_of": last["as_of"],
+            "recorded_at": last["recorded_at"],
+            "ledger_balances": dict(last.get("ledger_balances") or {}),
+            "declared_balances": None
+            if last.get("declared_balances") is None
+            else dict(last["declared_balances"]),
+            "differences": None
+            if last.get("differences") is None
+            else dict(last["differences"]),
+            "declared_not_in_ledger": list(last.get("declared_not_in_ledger") or []),
+            "difference_status": difference_status,
+        }
+    return {
+        "status": status,
+        "last": last_view,
+        "difference_status": difference_status,
+        "next_due": next_due,
     }
 
 
@@ -236,6 +374,7 @@ class Kernel:
             "last_errors": load.error_records(load.errors)[:50],
             "last_observation_id": None,
             "last_commit_id": None,
+            "reconciliations": self._reconciliation_records_from_audit(),
             "kernel_version": __version__,
         }
         self.store.save_state(state)
@@ -510,6 +649,12 @@ class Kernel:
             self.store.store_manifest_blobs(self.config.ledger_dir, load.manifest)
             return load
 
+        # The reconciliation cache is derived, not authoritative: repair it from
+        # the audit chain whenever it is missing or structurally broken.
+        if not _reconciliations_cache_valid(state.get("reconciliations")):
+            self._state = state
+            self._rebuild_reconciliations_locked()
+
         # An unfinished journal means a previous commit may have been applied
         # without its state update. Never reinterpret that as an external edit;
         # block new writes and let recovery decide.
@@ -604,6 +749,12 @@ class Kernel:
             status = "ContractInvalid"
         if self._pending_journals_locked():
             status = "RecoveryRequired"
+        cached_reconciliations = (self._state or {}).get("reconciliations")
+        reconciliations = (
+            cached_reconciliations
+            if _reconciliations_cache_valid(cached_reconciliations)
+            else self._reconciliation_records_from_audit()
+        )
         return {
             "schema_version": 1,
             "ledger_id": self.config.ledger_id,
@@ -617,6 +768,7 @@ class Kernel:
             "last_errors": load.error_records(load.errors)[:50],
             "last_observation_id": (self._state or {}).get("last_observation_id"),
             "last_commit_id": (self._state or {}).get("last_commit_id"),
+            "reconciliations": reconciliations,
             "kernel_version": __version__,
         }
 
@@ -1089,6 +1241,7 @@ class Kernel:
             parsed=parsed,
             agent_id=(draft.get("submitted_by") or {}).get("agent_id", "local-agent"),
             contract=contract,
+            reconciliation_status=self._reconciliation_status_map_locked(contract),
             fault_hook=self.fault_hook,
         )
         validation = {
@@ -1306,6 +1459,327 @@ class Kernel:
             )
             return workflow
 
+    # ---------------------------------------------------------- reconciliation
+    def _reconciliation_records_from_audit(self) -> list[dict[str, Any]]:
+        """Rebuild reconciliation records from the append-only audit chain.
+
+        The audit chain is the truth; the ``state.json.reconciliations`` cache is
+        derived from it and is never trusted for reads.
+        """
+        records: dict[str, dict[str, Any]] = {}
+        order: list[str] = []
+        for event in self.store.audit_events():
+            event_type = event.get("event_type")
+            if event_type not in RECONCILIATION_EVENT_TYPES:
+                continue
+            if event_type == "AccountReconciled":
+                reconciliation_id = event.get("reconciliation_id")
+                if not isinstance(reconciliation_id, str) or reconciliation_id in records:
+                    continue
+                if not isinstance(event.get("account"), str) or not isinstance(event.get("as_of"), str):
+                    continue
+                try:
+                    dt.date.fromisoformat(event["as_of"])
+                except ValueError:
+                    continue
+                records[reconciliation_id] = _reconciliation_record_from_event(event)
+                order.append(reconciliation_id)
+            elif event_type == "AccountReconciliationReverted":
+                reconciliation_id = event.get("reconciliation_id")
+                record = records.get(reconciliation_id) if isinstance(reconciliation_id, str) else None
+                if record is None or record["status"] != "valid":
+                    continue
+                record["status"] = "reverted"
+                record["reverted_at"] = event.get("occurred_at")
+                record["revert_reason"] = event.get("reason")
+                record["revert_event_id"] = event.get("event_id")
+        return [records[reconciliation_id] for reconciliation_id in order]
+
+    def _rebuild_reconciliations_locked(self) -> list[dict[str, Any]]:
+        """Rebuild ``state.json.reconciliations`` from the audit chain."""
+        records = self._reconciliation_records_from_audit()
+        if self._state is None:
+            self._state = self.store.load_state() or {}
+        self._state["reconciliations"] = records
+        self.store.save_state(self._state)
+        return records
+
+    def _account_reconciliation_view_locked(
+        self,
+        contract: Contract,
+        account: str,
+        *,
+        records: list[dict[str, Any]] | None = None,
+        today: dt.date | None = None,
+    ) -> dict[str, Any]:
+        records = self._reconciliation_records_from_audit() if records is None else records
+        return _reconciliation_view(contract, account, records, today or dt.date.today())
+
+    def _reconciliation_status_map_locked(self, contract: Contract) -> dict[str, str]:
+        records = self._reconciliation_records_from_audit()
+        today = dt.date.today()
+        return {
+            name: _reconciliation_view(contract, name, records, today)["status"]
+            for name in contract.accounts
+        }
+
+    def _normalize_reconciliation_note(self, note: Any) -> str | None:
+        if note is None:
+            return None
+        if not isinstance(note, str):
+            raise KernelError(RECONCILIATION_INVALID, "note must be a string or null")
+        text = note.strip()
+        if not text:
+            return None
+        return escape_display(text)[:500]
+
+    def _parse_declared_amount(self, currency: str, value: Any) -> Decimal:
+        if isinstance(value, bool) or isinstance(value, float):
+            raise KernelError(
+                RECONCILIATION_INVALID,
+                f"declared balance for {currency} must be a decimal string, not a float",
+            )
+        if isinstance(value, Decimal):
+            amount = value
+        elif isinstance(value, str):
+            try:
+                amount = Decimal(value.strip())
+            except (InvalidOperation, ValueError):
+                raise KernelError(
+                    RECONCILIATION_INVALID,
+                    f"declared balance for {currency} is not a decimal value",
+                ) from None
+        else:
+            raise KernelError(
+                RECONCILIATION_INVALID,
+                f"declared balance for {currency} must be a decimal string",
+            )
+        if not amount.is_finite():
+            raise KernelError(RECONCILIATION_INVALID, f"declared balance for {currency} must be finite")
+        return amount
+
+    def _normalize_declared(
+        self, declared: Mapping[str, Decimal] | None
+    ) -> dict[str, Decimal] | None:
+        if declared is None:
+            return None
+        if not isinstance(declared, MappingABC):
+            raise KernelError(
+                RECONCILIATION_INVALID,
+                "declared must be a mapping of currency to decimal string",
+            )
+        if not declared:
+            return None
+        normalized: dict[str, Decimal] = {}
+        for currency, value in declared.items():
+            if not isinstance(currency, str) or not _CURRENCY_RE.match(currency):
+                raise KernelError(
+                    RECONCILIATION_INVALID,
+                    f"declared currency is not a valid Beancount currency token: {currency!r}",
+                )
+            normalized[currency] = self._parse_declared_amount(currency, value)
+        return normalized
+
+    def _validate_reconciliation_date(self, as_of: Any) -> dt.date:
+        if isinstance(as_of, dt.datetime) or not isinstance(as_of, dt.date):
+            raise KernelError(RECONCILIATION_INVALID, "as_of must be a calendar date")
+        if as_of > dt.date.today():
+            raise KernelError(
+                RECONCILIATION_INVALID,
+                f"as_of must not be in the future: {as_of.isoformat()}",
+            )
+        return as_of
+
+    def reconcile_account(
+        self,
+        account: str,
+        *,
+        as_of: dt.date,
+        declared: Mapping[str, Decimal] | None = None,
+        note: str | None = None,
+        actor: str = "local-user",
+    ) -> dict[str, Any]:
+        """Record an account reconciliation as an append-only audit fact.
+
+        The ledger is never written and ``ledger_revision`` never changes. All
+        validations run before anything is appended; failures leave no trace.
+        Declared balances are optional, read-only and never create adjustments.
+        """
+        with self._locked():
+            load = self._ensure_fresh_locked()
+            if not isinstance(account, str) or not account:
+                raise KernelError(RECONCILIATION_INVALID, "account is required")
+            as_of_date = self._validate_reconciliation_date(as_of)
+            if not load.ok:
+                raise KernelError(
+                    RECONCILIATION_INVALID,
+                    "ledger has Beancount errors; reconciliation is refused",
+                    {"beancount_error_count": len(load.errors)},
+                )
+            info = load.accounts.get(account)
+            if info is None:
+                raise KernelError(
+                    RECONCILIATION_INVALID,
+                    f"account is not defined in the ledger: {account}",
+                )
+            if not info.is_open_on(as_of_date):
+                raise KernelError(
+                    RECONCILIATION_INVALID,
+                    f"account {account} is not open on {as_of_date.isoformat()}",
+                )
+            if not isinstance(actor, str) or not actor.strip():
+                raise KernelError(RECONCILIATION_INVALID, "actor must be a non-empty string")
+            note_text = self._normalize_reconciliation_note(note)
+            declared_amounts = self._normalize_declared(declared)
+            records = self._reconciliation_records_from_audit()
+            if any(
+                record["account"] == account
+                and record["status"] == "valid"
+                and record["as_of"] == as_of_date.isoformat()
+                for record in records
+            ):
+                raise KernelError(
+                    RECONCILIATION_INVALID,
+                    f"a valid reconciliation for {account} on {as_of_date.isoformat()} already "
+                    "exists; revert it before recording again",
+                )
+            contract = self._read_contract_lenient()
+            ledger_balances = {
+                currency: format_amount(amount)
+                for currency, amount in sorted(
+                    self.adapter.account_balances(load, account, as_of_date).items()
+                )
+            }
+            declared_balances: dict[str, str] | None = None
+            differences: dict[str, str] | None = None
+            declared_not_in_ledger: list[str] = []
+            if declared_amounts is not None:
+                declared_balances = {
+                    currency: format_amount(declared_amounts[currency])
+                    for currency in sorted(declared_amounts)
+                }
+                differences = {}
+                for currency in sorted(declared_amounts):
+                    ledger_amount = Decimal(ledger_balances.get(currency, "0"))
+                    differences[currency] = format_amount(
+                        declared_amounts[currency] - ledger_amount
+                    )
+                    if currency not in ledger_balances:
+                        declared_not_in_ledger.append(currency)
+            event = self.store.audit_append(
+                "AccountReconciled",
+                {
+                    "reconciliation_id": new_id("rec"),
+                    "account": account,
+                    "as_of": as_of_date.isoformat(),
+                    "ledger_balances": ledger_balances,
+                    "declared_balances": declared_balances,
+                    "differences": differences,
+                    "declared_not_in_ledger": declared_not_in_ledger,
+                    "ledger_revision": load.revision,
+                    "contract_revision": contract_revision(self.config.contracts_path),
+                    "note": note_text,
+                },
+                actor={"type": "human", "id": actor},
+            )
+            self._rebuild_reconciliations_locked()
+            record = _reconciliation_record_from_event(event)
+            view = self._account_reconciliation_view_locked(contract, account)
+            return {
+                "record": record,
+                "reconciliation": view,
+                "audit_event_id": event["event_id"],
+            }
+
+    def list_reconciliations(self, account: str) -> list[dict[str, Any]]:
+        """Return valid (non-reverted) reconciliation records for one account."""
+        with self._locked():
+            self._ensure_fresh_locked()
+            rows = [
+                dict(record)
+                for record in self._reconciliation_records_from_audit()
+                if record.get("account") == account and record.get("status") == "valid"
+            ]
+            rows.sort(key=lambda row: (str(row.get("as_of")), str(row.get("recorded_at"))))
+            return rows
+
+    def revert_reconciliation(
+        self,
+        reconciliation_id: str,
+        *,
+        reason: str,
+        actor: str = "local-user",
+    ) -> dict[str, Any]:
+        """Revert the latest valid reconciliation of an account.
+
+        Reverting appends ``AccountReconciliationReverted``; it never deletes or
+        edits the original record. Older records cannot be reverted while a newer
+        valid record exists, because the state is derived from the latest one.
+        """
+        with self._locked():
+            self._ensure_fresh_locked()
+            if not isinstance(reconciliation_id, str) or not reconciliation_id.strip():
+                raise KernelError(RECONCILIATION_INVALID, "reconciliation_id is required")
+            if not isinstance(reason, str) or not reason.strip():
+                raise KernelError(RECONCILIATION_INVALID, "a reason is required to revert a reconciliation")
+            if not isinstance(actor, str) or not actor.strip():
+                raise KernelError(RECONCILIATION_INVALID, "actor must be a non-empty string")
+            records = self._reconciliation_records_from_audit()
+            target = next(
+                (
+                    record
+                    for record in records
+                    if record["reconciliation_id"] == reconciliation_id
+                ),
+                None,
+            )
+            if target is None:
+                raise KernelError(
+                    RECONCILIATION_INVALID,
+                    f"reconciliation not found: {reconciliation_id}",
+                )
+            if target["status"] != "valid":
+                raise KernelError(
+                    RECONCILIATION_INVALID,
+                    f"reconciliation was already reverted: {reconciliation_id}",
+                )
+            latest = max(
+                (
+                    record
+                    for record in records
+                    if record["account"] == target["account"] and record["status"] == "valid"
+                ),
+                key=lambda record: (str(record["as_of"]), str(record["recorded_at"])),
+            )
+            if latest["reconciliation_id"] != reconciliation_id:
+                raise KernelError(
+                    RECONCILIATION_INVALID,
+                    "only the latest valid reconciliation of an account can be reverted",
+                    {"latest_reconciliation_id": latest["reconciliation_id"]},
+                )
+            escaped_reason = escape_display(reason)[:500]
+            event = self.store.audit_append(
+                "AccountReconciliationReverted",
+                {
+                    "reconciliation_id": reconciliation_id,
+                    "account": target["account"],
+                    "as_of": target["as_of"],
+                    "reason": escaped_reason,
+                },
+                actor={"type": "human", "id": actor},
+            )
+            self._rebuild_reconciliations_locked()
+            contract = self._read_contract_lenient()
+            return {
+                "reconciliation_id": reconciliation_id,
+                "account": target["account"],
+                "as_of": target["as_of"],
+                "reverted_at": event["occurred_at"],
+                "reason": escaped_reason,
+                "audit_event_id": event["event_id"],
+                "reconciliation": self._account_reconciliation_view_locked(contract, target["account"]),
+            }
+
     # -------------------------------------------------------------- accounts
     def list_accounts(self, as_of: dt.date | None = None) -> list[dict[str, Any]]:
         with self._locked():
@@ -1344,6 +1818,8 @@ class Kernel:
             policy = contract.policy(account_name)
             balances = self.adapter.account_balances(load, account_name, as_of or dt.date.today())
             last_dates = self.adapter.last_posting_dates(load)
+            assertions = self.adapter.last_balance_assertions(load)
+            reconciliation_records = self._reconciliation_records_from_audit()
             pending = self._pending_counts_locked().get(account_name, 0)
             if info is None and policy is None:
                 raise KernelError("ACCOUNT_NOT_FOUND", f"unknown account: {account_name}")
@@ -1365,6 +1841,11 @@ class Kernel:
                 "aliases": list(policy.aliases) if policy else [],
                 "contract": account_contract_view(policy),
                 "pending_drafts": pending,
+                "assertion_status": "asserted" if account_name in assertions else "unset",
+                "last_assertion": assertions.get(account_name),
+                "reconciliation": _reconciliation_view(
+                    contract, account_name, reconciliation_records, dt.date.today()
+                ),
                 "note": "balances are derived from the ledger; contracts never store balances",
             }
 

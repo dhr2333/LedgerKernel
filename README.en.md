@@ -136,7 +136,7 @@ stdio transport, one JSON-RPC message per line. Exposes:
 - `ledger_submit_draft`
 - `ledger_get_draft_status`
 
-It **does not** expose approve, commit, write-file, or modify-contract tools. The MCP layer does not reimplement validation or write logic; it only calls `Kernel` use cases.
+It **does not** expose approve, commit, write-file, modify-contract, or reconciliation tools. The MCP layer does not reimplement validation or write logic; it only calls `Kernel` use cases.
 
 Client configuration example (Claude Desktop / DSH, etc.):
 
@@ -182,7 +182,7 @@ These documents describe the v0.1 prototype baseline and are currently available
 ├── kernel.toml            # binding, write_target, approval policy
 ├── contracts.yaml         # declarative account contracts (schema_version 1)
 ├── templates.yaml         # draft templates (schema_version 1)
-├── state.json             # current revision/manifest/state (rebuildable)
+├── state.json             # current revision/manifest/state plus the reconciliations cache (rebuildable)
 ├── kernel.lock            # kernel write serialization lock (flock)
 ├── idempotency.json       # agent + key -> draft_id
 ├── drafts/<id>.json       # immutable proposal body
@@ -248,6 +248,26 @@ ledger-kernel contracts apply --file contracts.new.yaml \
 - The write uses a same-directory temp file + `fsync` + `os.replace` + directory `fsync` while holding `kernel.lock`; old/new contents go to `snapshots/blobs/` and a `ContractChanged` audit event records both hashes, actor, and note.
 - A contract revision change invalidates every pending validation/approval; the next operation revalidates automatically and old approvals are never reused.
 - Contract editing never writes the ledger and does not change `ledger_revision`; MCP exposes no such write entry point.
+
+### Account reconciliation (v0.2)
+
+Reconciliation is a **workflow fact**, not a Beancount directive: `accounts reconcile` appends an `AccountReconciled` audit event and `accounts reconciliation revert` appends an `AccountReconciliationReverted` event; neither writes the ledger nor changes `ledger_revision`, and audit history is never deleted or rewritten.
+
+```bash
+ledger-kernel accounts reconcile Assets:Bank:Checking --as-of 2026-11-30 \
+  --declared CNY=1234.56 --declared USD=100.00 --note "matches the bank app" \
+  --confirm Assets:Bank:Checking
+ledger-kernel accounts reconciliation list Assets:Bank:Checking
+ledger-kernel accounts reconciliation revert rec_... --reason "wrong balance" --confirm rec_...
+```
+
+- Record fields: `reconciliation_id`, `account`, `as_of`, `ledger_balances` (end-of-day balances of the account on `as_of`, multi-currency), `declared_balances` (optional declared balances), `differences = declared - ledger` (per declared currency), `declared_not_in_ledger` (declared currencies absent from the ledger balance are computed with ledger=0 and listed here), `ledger_revision`, `contract_revision`, `actor` (`human/local-user`), `recorded_at`, and `note` (optional). Amounts are decimal strings only; a `float` or an invalid amount returns `RECONCILIATION_INVALID`.
+- The reconciliation status is derived from the contract `policy.reconciliation.cadence` (`weekly/monthly/quarterly/yearly`) and the latest valid record: `not_configured` / `never` / `current` / `overdue`; `next_due = last.as_of + cadence_days`; `difference_status` is `none/zero/nonzero`. `accounts show` also returns `assertion_status` (`unset`/`asserted`), `last_assertion` (date and amount of the latest Beancount `balance` directive, or `null`), and the `reconciliation` view; a failed assertion is a global `LedgerInvalid` and is never disguised as passing in the account view.
+- A valid record must be unique per account and `as_of` (revert before recording again); only the latest valid record of an account can be reverted, the status falls back to the previous record, and the history stays in the audit chain.
+- Preconditions: the ledger loads without errors, the account is open (not closed) on `as_of`, and `as_of <= today`; otherwise `RECONCILIATION_INVALID` is returned and nothing is written. Reconciliation requires no evidence; `note` is optional.
+- **Reconciliation never blocks writes**: the status is only used for hints, sorting, and review views, and `CONTRACT_RECONCILIATION` warns only for `never`/`overdue`; `hard_deadline` is accepted for compatibility but ignored. Declared differences are recorded and shown only: no adjustment entry is generated or committed automatically; adjustments still go through draft → validate → approve → commit.
+- `state.json.reconciliations` is a rebuildable cache; when missing or corrupt it is rebuilt from audit events, and reads always take the audit chain as the truth.
+- `accounts reconcile` / `accounts reconciliation revert` require `--confirm` to equal the account name / `reconciliation_id`; non-interactive mode never auto-confirms, and MCP exposes no reconciliation write entry point.
 
 ## Frozen engineering decisions (implementation plan section 12)
 

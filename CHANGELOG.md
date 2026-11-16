@@ -20,6 +20,7 @@
 - 端到端脚本 `scripts/e2e_ledger.py` 覆盖提交、外部修改观测与 diff、草稿失效、无效账本阻断；CI 每次构建执行，并有一条 `unittest` 集成用例。
 - 契约编辑入口 `contracts show/validate/diff/apply`（v0.2 W1）：双哈希 CAS、严格预校验、原子替换、`ContractChanged` 审计与前后内容 blob；冲突返回新增错误码 `CONTRACT_CONFLICT` 且文件不变（ADR-019）。
 - 契约 schema 在 `schema_version: 1` 内加法新增可选 `unmanaged_accounts`：与 `accounts` 不允许重叠；契约覆盖率与 `unmanaged_accounts` 计数通过 `accounts list --coverage` 展示。
+- 账户对账入口 `accounts reconcile` 与 `accounts reconciliation list|revert`（v0.2 W2）：`AccountReconciled` / `AccountReconciliationReverted` 追加式审计，按契约 `cadence` 推导 `not_configured/never/current/overdue` 与 `next_due`，可选申报余额与只读差异，新错误码 `RECONCILIATION_INVALID`；`accounts show` 增加 `assertion_status`/`last_assertion` 摘要与 `reconciliation` 视图，`state.json.reconciliations` 可从审计重建。
 
 ### Changed
 
@@ -31,6 +32,7 @@
 - `scripts/e2e_testassets.py` 重命名为 `scripts/e2e_ledger.py`：默认跑合成 fixture，仍可用 `--source <TestAssets>` 跑真实账本副本。
 - CI 触发方式明确为 GitHub webhook → 内部 Jenkins Multibranch；构建结果回写为 commit status（context `continuous-integration/jenkins/branch`），配置步骤见 `docs/ci-github-webhook.md`。
 - 新增维护者本地的 Jenkins 令牌轮换约定（`jk-token rotate`，失败关闭、先验证后吊销），凭据不进入仓库。
+- `CONTRACT_RECONCILIATION` 判据从“最后记账日超过 cadence”改为“对账状态为 `never`/`overdue` 才警告”，仍是 warning、永不阻断；对账/撤销不写 Ledger、不改变 `ledger_revision`，`hard_deadline` 兼容读取但忽略；MCP 不暴露对账写入口。
 
 ### Fixed
 

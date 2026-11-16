@@ -16,7 +16,7 @@ from collections import Counter
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 from .adapter import BeancountAdapter, LoadResult
 from .contracts import Contract, evaluate_contract
@@ -354,6 +354,7 @@ def dry_run(
     parsed: ParsedDraft,
     agent_id: str,
     contract: Contract,
+    reconciliation_status: Mapping[str, str] | None = None,
     fault_hook: FaultHook | None = None,
 ) -> DryRunResult:
     checks: list[dict[str, Any]] = []
@@ -491,7 +492,7 @@ def dry_run(
                 agent_id=agent_id,
                 load=baseline,
                 balances_after=balance_map,
-                last_posting_dates=BeancountAdapter(ledger_dir).last_posting_dates(baseline),
+                reconciliation_status=reconciliation_status,
             )
         )
         checks.extend(review_checks)

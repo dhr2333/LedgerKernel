@@ -322,6 +322,42 @@ class BeancountAdapter:
                         result[posting.account] = entry.date
         return result
 
+    def last_balance_assertions(self, load: LoadResult) -> dict[str, dict[str, Any]]:
+        """Latest Beancount ``balance`` directive per account and currency.
+
+        This is a *presence* summary only: Beancount itself decides whether the
+        assertion passes, and a failure is reported as a global ledger error. The
+        account view must not pretend an assertion passed.
+        """
+        latest: dict[str, dict[str, Any]] = {}
+        for entry in load.entries:
+            if not isinstance(entry, data.Balance):
+                continue
+            amount = entry.amount
+            if amount is None:  # pragma: no cover - parser already rejects this
+                continue
+            currency = str(amount.currency)
+            row = latest.get(entry.account)
+            if row is None:
+                row = {"date": entry.date, "amounts": {}, "currency_dates": {}, "meta": entry.meta}
+                latest[entry.account] = row
+            if entry.date > row["date"]:
+                row["date"] = entry.date
+            previous_currency_date = row["currency_dates"].get(currency)
+            if previous_currency_date is None or entry.date >= previous_currency_date:
+                row["currency_dates"][currency] = entry.date
+                row["amounts"][currency] = format(amount.number, "f")
+        records: dict[str, dict[str, Any]] = {}
+        for account, row in latest.items():
+            meta = row["meta"] or {}
+            records[account] = {
+                "date": row["date"].isoformat(),
+                "amounts": dict(sorted(row["amounts"].items())),
+                "source_file": _relative_source(meta.get("filename")),
+                "source_line": meta.get("lineno"),
+            }
+        return records
+
     @staticmethod
     def error_records(errors: Sequence[Any]) -> list[dict[str, Any]]:
         records: list[dict[str, Any]] = []

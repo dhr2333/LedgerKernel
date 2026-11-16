@@ -22,6 +22,7 @@ All notable changes are recorded here. The format follows Keep a Changelog; vers
 - The end-to-end script `scripts/e2e_ledger.py` covers commit, external-change observation with diff, draft invalidation, and blocking commits on an invalid ledger; CI runs it on every build and a `unittest` integration case wraps it.
 - Contract editing entry point `contracts show/validate/diff/apply` (v0.2 W1): dual-hash CAS, strict pre-validation, atomic replace, `ContractChanged` audit with before/after blobs; conflicts return the new `CONTRACT_CONFLICT` code and leave the file unchanged (ADR-019).
 - Contract schema extends `schema_version: 1` additively with optional `unmanaged_accounts`: it must not overlap `accounts`; contract coverage and the unmanaged count are shown by `accounts list --coverage`.
+- Account reconciliation entry points `accounts reconcile` and `accounts reconciliation list|revert` (v0.2 W2): append-only `AccountReconciled` / `AccountReconciliationReverted` audit events, `not_configured/never/current/overdue` status and `next_due` derived from the contract `cadence`, optional declared balances with read-only differences, and the new `RECONCILIATION_INVALID` error code; `accounts show` adds `assertion_status`/`last_assertion` plus a `reconciliation` view, and `state.json.reconciliations` is rebuildable from the audit chain.
 
 ### Changed
 
@@ -33,6 +34,7 @@ All notable changes are recorded here. The format follows Keep a Changelog; vers
 - Renamed `scripts/e2e_testassets.py` to `scripts/e2e_ledger.py`: it defaults to the synthetic fixture and still accepts `--source <TestAssets>` for a real-ledger copy.
 - CI triggering is now spelled out as GitHub webhook → internal Jenkins Multibranch; the result is written back as a commit status (context `continuous-integration/jenkins/branch`). Configuration steps: `docs/ci-github-webhook.en.md`.
 - Added a maintainer-local Jenkins token rotation convention (`jk-token rotate`, fail-closed, verify before revoke); credentials never enter the repository.
+- The `CONTRACT_RECONCILIATION` criterion now warns from reconciliation status (`never`/`overdue`) instead of "last posting date beyond cadence"; it stays a warning and never blocks. Reconciliation and revert never write the ledger and do not change `ledger_revision`; `hard_deadline` is accepted but ignored; MCP exposes no reconciliation write entry point.
 - Documentation is now bilingual: `README`, `CONTRIBUTING`, `CHANGELOG`, and `AGENTS` each have an English counterpart (`*.en.md`). The Chinese file is the source text. No code behavior changes.
 
 ### Fixed
