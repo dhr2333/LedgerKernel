@@ -1,0 +1,2 @@
+; LedgerKernel write_target for the fixture ledger.
+; Controlled commits append complete transaction blocks below this line.

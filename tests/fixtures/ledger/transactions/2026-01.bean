@@ -1,0 +1,12 @@
+2026-01-01 pad Assets:Bank:Checking Equity:Opening-Balances
+2026-01-01 pad Assets:Cash Equity:Opening-Balances
+2026-01-02 balance Assets:Bank:Checking 5000.00 CNY
+2026-01-02 balance Assets:Cash 1000.00 CNY
+
+2026-01-05 * "Grocery Store" "Weekly groceries"
+  Expenses:Food:Groceries    120.00 CNY
+  Assets:Bank:Checking      -120.00 CNY
+
+2026-01-20 * "Employer" "January salary"
+  Assets:Bank:Checking      8000.00 CNY
+  Income:Salary            -8000.00 CNY

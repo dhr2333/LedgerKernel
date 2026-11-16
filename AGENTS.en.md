@@ -54,7 +54,8 @@ Triggered by "did behavior change?", not required on every change:
 
 - New/modified behavior has corresponding tests; tests still use the standard-library `unittest`.
 - Passes locally: `PYTHONPATH=src python3 -m unittest discover -s tests -t .`
-- Changes involving writes, recovery, or external changes additionally run: `PYTHONPATH=src python3 scripts/e2e_testassets.py --source <TestAssets>` (explain why it is skipped when no TestAssets is available).
+- Synthetic-fixture end-to-end loop: `PYTHONPATH=src python3 scripts/e2e_ledger.py` (CI runs it on every build; it covers commit, external change, draft invalidation, and blocking on an invalid ledger).
+- Changes involving writes, recovery, or external changes additionally run against a copy of a real ledger: `PYTHONPATH=src python3 scripts/e2e_ledger.py --source <TestAssets>` (explain why it is skipped when no TestAssets is available; the source directory is read-only and the script only operates on a temporary copy).
 - Public behavior changes have updated documentation in both languages; decision changes are recorded in an ADR.
 - `git status` contains only files relevant to this change; do not tidy unrelated content along the way.
 - Do not commit `.venv/`, `__pycache__/`, build artifacts, or temporary ledgers.

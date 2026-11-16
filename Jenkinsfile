@@ -30,7 +30,7 @@ pipeline {
             }
         }
 
-        stage('测试与 CLI 冒烟') {
+        stage('测试、fixture E2E 与 CLI 冒烟') {
             steps {
                 sh '''
                     set -eu
@@ -45,6 +45,9 @@ pipeline {
                           python -m pip install --upgrade pip
                           python -m pip install -e .
                           python -m unittest discover -s tests -t . -v
+                          # 合成 fixture 的完整写入闭环：提交、外部修改、草稿失效、
+                          # 无效账本阻断。不需要真实账本或私有数据。
+                          python scripts/e2e_ledger.py
                           ledger-kernel --version
                           ledger-kernel --help > /dev/null
                         '

@@ -242,10 +242,18 @@ PYTHONPATH=src python3 -m unittest discover -s tests -t .
 | T23 | External change mid-batch | `test_external_change_mid_batch_invalidates_remaining_approvals` |
 | T24 | External append after commit | `test_external_append_after_commit_is_not_a_known_transition` |
 
-Real-ledger end-to-end (run on a sanitized copy of TestAssets; the original directory is not modified):
+The end-to-end check has two layers, both operating only on a temporary copy:
+
+Synthetic fixture (default; CI runs it on every build; covers commit, external change, draft invalidation, and blocking on an invalid ledger):
 
 ```bash
-PYTHONPATH=src python3 scripts/e2e_testassets.py --source /path/to/TestAssets
+PYTHONPATH=src python3 scripts/e2e_ledger.py
+```
+
+Real-ledger copy (run locally when writes/recovery/external changes are involved; the `--source` directory is read-only):
+
+```bash
+PYTHONPATH=src python3 scripts/e2e_ledger.py --source /path/to/TestAssets
 ```
 
 ## Known limitations (stated honestly for v0.1)
@@ -284,7 +292,8 @@ src/ledger_kernel/
 
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -t . -v
-PYTHONPATH=src python3 scripts/e2e_testassets.py --source /path/to/TestAssets
+PYTHONPATH=src python3 scripts/e2e_ledger.py
+PYTHONPATH=src python3 scripts/e2e_ledger.py --source /path/to/TestAssets
 ```
 
-Tests do not depend on pytest; only `beancount` and `PyYAML` are required. All tests run in temporary directories and never modify a real ledger.
+Tests do not depend on pytest; only `beancount` and `PyYAML` are required. Tests and E2E run in temporary directories and never modify a real ledger; the synthetic fixture lives in `tests/fixtures/ledger`.

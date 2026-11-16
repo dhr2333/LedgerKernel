@@ -9,7 +9,8 @@
 ## 验证
 
 - [ ] `PYTHONPATH=src python3 -m unittest discover -s tests -t .`
-- [ ] 涉及写入/恢复/外部变化时跑过 `scripts/e2e_testassets.py`
+- [ ] `PYTHONPATH=src python3 scripts/e2e_ledger.py`（合成 fixture 闭环）
+- [ ] 涉及写入/恢复/外部变化时跑过 `scripts/e2e_ledger.py --source <TestAssets>`
 - [ ] 公共 API / CLI / 配置 / schema 变化已更新 README
 - [ ] 安全边界或不可逆决策变化已新增 ADR
 

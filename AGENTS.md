@@ -54,7 +54,8 @@
 
 - 新增/修改行为有对应测试；测试仍使用标准库 `unittest`。
 - 本地通过：`PYTHONPATH=src python3 -m unittest discover -s tests -t .`
-- 涉及写入、恢复、外部变化的改动，额外跑：`PYTHONPATH=src python3 scripts/e2e_testassets.py --source <TestAssets>`（没有 TestAssets 时说明跳过原因）。
+- 合成 fixture 的端到端闭环：`PYTHONPATH=src python3 scripts/e2e_ledger.py`（CI 每次构建都跑，覆盖提交、外部修改、草稿失效、无效账本阻断）。
+- 涉及写入、恢复、外部变化的改动，额外在真实账本副本上跑：`PYTHONPATH=src python3 scripts/e2e_ledger.py --source <TestAssets>`（没有 TestAssets 时说明跳过原因；原目录只读，脚本只操作临时副本）。
 - 公共行为变化已在中英两版更新文档；决策变化已记录 ADR。
 - `git status` 只包含本次相关文件；不顺手整理无关内容。
 - 不提交 `.venv/`、`__pycache__/`、构建产物或临时账本。

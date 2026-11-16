@@ -238,10 +238,18 @@ PYTHONPATH=src python3 -m unittest discover -s tests -t .
 | T23 | 批中途外部变化 | `test_external_change_mid_batch_invalidates_remaining_approvals` |
 | T24 | 提交后外部追加 | `test_external_append_after_commit_is_not_a_known_transition` |
 
-真实账本端到端（在 TestAssets 脱敏副本上执行，不改原目录）：
+端到端检查分两层，都只操作临时副本：
+
+合成 fixture（默认，CI 每次构建执行；覆盖提交、外部修改、草稿失效、无效账本阻断）：
 
 ```bash
-PYTHONPATH=src python3 scripts/e2e_testassets.py --source /path/to/TestAssets
+PYTHONPATH=src python3 scripts/e2e_ledger.py
+```
+
+真实账本副本（涉及写入/恢复/外部变化时本地执行，`--source` 原目录只读）：
+
+```bash
+PYTHONPATH=src python3 scripts/e2e_ledger.py --source /path/to/TestAssets
 ```
 
 ## 已知限制（v0.1 如实声明）
@@ -280,7 +288,8 @@ src/ledger_kernel/
 
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -t . -v
-PYTHONPATH=src python3 scripts/e2e_testassets.py --source /path/to/TestAssets
+PYTHONPATH=src python3 scripts/e2e_ledger.py
+PYTHONPATH=src python3 scripts/e2e_ledger.py --source /path/to/TestAssets
 ```
 
-测试不依赖 pytest；只依赖 `beancount` 与 `PyYAML`。测试全部在临时目录中运行，不会修改真实账本。
+测试不依赖 pytest；只依赖 `beancount` 与 `PyYAML`。测试与 E2E 全部在临时目录中运行，不会修改真实账本；合成 fixture 位于 `tests/fixtures/ledger`。

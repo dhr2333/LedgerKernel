@@ -26,11 +26,14 @@ python -m pip install -e .
 # Unit + integration tests (required)
 PYTHONPATH=src python3 -m unittest discover -s tests -t .
 
+# Synthetic-fixture end-to-end (default; CI runs it on every build)
+PYTHONPATH=src python3 scripts/e2e_ledger.py
+
 # Real-ledger copy end-to-end (when writing/recovery/external changes are involved)
-PYTHONPATH=src python3 scripts/e2e_testassets.py --source /path/to/TestAssets
+PYTHONPATH=src python3 scripts/e2e_ledger.py --source /path/to/TestAssets
 ```
 
-E2E only operates on a temporary copy of the ledger given by `--source`; the original directory **must not** be modified. When no sanitized TestAssets ledger is available, state the reason for skipping in the PR.
+E2E only operates on a temporary copy; the source directory given by `--source` **must not** be modified. When no sanitized TestAssets ledger is available, state in the PR that the real-ledger regression was skipped; the synthetic fixture part must still pass in CI.
 
 ## Pre-submit checks
 
@@ -53,7 +56,7 @@ E2E only operates on a temporary copy of the ledger given by `--source`; the ori
 - Design documents live in `docs/design/`; documentation rules are in `AGENTS.md`.
 - The release process is in `docs/release-checklist.md`; version records are in `CHANGELOG.md`.
 - CI currently runs on an internal Jenkins, triggered by a GitHub webhook on push / PR; the result appears as the `continuous-integration/jenkins/branch` commit status on commits and PRs. The `main` build must be green before merging. Webhook and job configuration: `docs/ci-github-webhook.en.md`.
-- CI runs unit/integration tests and a CLI smoke check only; `scripts/e2e_testassets.py` is not executed in CI. Changes involving writes/recovery must be run locally and noted in the PR.
+- CI runs unit/integration tests, the synthetic-fixture E2E, and a CLI smoke check; the real-ledger `--source` E2E is not executed in CI. Changes involving writes/recovery must be run locally and noted in the PR.
 
 ## Language policy
 

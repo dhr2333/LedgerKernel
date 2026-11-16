@@ -16,8 +16,8 @@ push / pull_request ──webhook──▶ Jenkins /github-webhook/ ──▶ Mu
               commit status continuous-integration/jenkins/branch ◀── written by the Git plugin
 ```
 
-- The Jenkinsfile does one thing: inside a disposable `python:3.12-slim` container it runs `pip install -e .`, the full `unittest` suite, and a `ledger-kernel --version/--help` smoke test.
-- It does **not** run `scripts/e2e_testassets.py`: the E2E script needs a sanitized copy of a real ledger, which CI does not have. Say so in the PR, as required by `AGENTS.md`.
+- The Jenkinsfile does one thing: inside a disposable `python:3.12-slim` container it runs `pip install -e .`, the full `unittest` suite, the synthetic-fixture E2E (`scripts/e2e_ledger.py`), and a `ledger-kernel --version/--help` smoke test.
+- It does **not** run the real-ledger E2E (`scripts/e2e_ledger.py --source <TestAssets>`): that needs a sanitized copy of a real ledger, which CI does not have. Say so in the PR, as required by `AGENTS.md`.
 - The build does not create `.ledger-kernel/` or write to any ledger; the only artifact is the build log, and `cleanWs()` removes the workspace.
 - The repository contains no Jenkins or GitHub credentials; this repository is public.
 

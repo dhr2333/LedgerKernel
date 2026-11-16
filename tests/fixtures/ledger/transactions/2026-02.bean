@@ -1,0 +1,11 @@
+2026-02-10 * "Bookstore" "Books" ^receipt-2026-02
+  Expenses:Books              88.00 CNY
+  Liabilities:CreditCard     -88.00 CNY
+
+2026-02-14 * "Gift Shop" "Gift" #gift
+  Expenses:Books              30.00 CNY
+  Assets:Cash                -30.00 CNY
+
+2026-02-28 balance Assets:Bank:Checking 12880.00 CNY
+2026-02-28 balance Assets:Cash 970.00 CNY
+2026-02-28 balance Liabilities:CreditCard -88.00 CNY

@@ -1,0 +1,16 @@
+; Synthetic fixture ledger for LedgerKernel tests and the end-to-end check.
+; No real financial data: accounts, payees and amounts are invented.
+
+option "title" "LedgerKernel Fixture Ledger"
+option "operating_currency" "CNY"
+
+plugin "beancount.plugins.leafonly"
+
+include "accounts/assets.bean"
+include "accounts/liabilities.bean"
+include "accounts/equity.bean"
+include "accounts/expenses.bean"
+include "accounts/income.bean"
+
+include "transactions/all.bean"
+include "transactions/kernel-import.bean"

@@ -16,8 +16,8 @@ push / pull_request ──webhook──▶ Jenkins /github-webhook/ ──▶ Mu
               commit status continuous-integration/jenkins/branch ◀── Git 插件回写
 ```
 
-- Jenkinsfile 只做一件事：在一次性 `python:3.12-slim` 容器中 `pip install -e .`、跑全部 `unittest`、做 `ledger-kernel --version/--help` 冒烟。
-- **不**执行 `scripts/e2e_testassets.py`：E2E 需要脱敏真实账本副本，CI 中没有该资产，按 `AGENTS.md` 在 PR 中说明跳过原因。
+- Jenkinsfile 只做一件事：在一次性 `python:3.12-slim` 容器中 `pip install -e .`、跑全部 `unittest`、跑合成 fixture 的 E2E（`scripts/e2e_ledger.py`），再做 `ledger-kernel --version/--help` 冒烟。
+- **不**执行真实账本 E2E（`scripts/e2e_ledger.py --source <TestAssets>`）：它需要脱敏真实账本副本，CI 中没有该资产，按 `AGENTS.md` 在 PR 中说明跳过原因。
 - 构建过程不产生 `.ledger-kernel/`、不写任何账本；产物只有 `cleanWs()` 清理后的构建日志。
 - 仓库内不含任何 Jenkins / GitHub 凭据；本仓库是公开仓库。
 
