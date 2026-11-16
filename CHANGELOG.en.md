@@ -11,6 +11,7 @@ All notable changes are recorded here. The format follows Keep a Changelog; vers
 - Account-layer dogfood protocol upgraded to the v0.2.x round (`docs/dogfood.en.md` / `.md`): account-layer metrics, a per-round record table, and criteria #6-#9; new baseline tool `scripts/dogfood_account_layer.py` (reproducible on the synthetic fixture; `--source` reads a real-ledger copy only).
 - Every `accounts list` row now carries `assertion_status` / `last_assertion` / `reconciliation` (matching `accounts show`); `review --by-account` now uses one bulk read.
 - v0.2 account-layer dogfood baseline report `docs/design/v0.2-dogfood-round2.md`: real-ledger copy with 97 active accounts, 17/17 checks passing, no real data.
+- v0.3 MVP scope and explicit non-goals `docs/design/v0.3-scope.md`: the only MVP is the review loop; in-kernel UI/server, Web, multiple `write_target`s, on-demand attribution, Windows, automatic approval and an external reversal helper are explicitly out (D01-D12 with re-open conditions; document first, code not started).
 
 ### Changed
 

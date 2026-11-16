@@ -9,6 +9,7 @@
 - 账户层 dogfood 协议升级到 v0.2.x 轮次（`docs/dogfood.md` / `.en.md`）：新增账户层指标、每轮记录表与判据 #6–#9；新增基线工具 `scripts/dogfood_account_layer.py`（合成 fixture 可复现，`--source` 真实账本临时副本只读）。
 - `accounts list` 每行新增 `assertion_status` / `last_assertion` / `reconciliation`（与 `accounts show` 一致）；`review --by-account` 改用一次批量读取。
 - v0.2 账户层 dogfood 基线轮报告 `docs/design/v0.2-dogfood-round2.md`：真实账本副本 97 个活跃账户、17/17 检查通过、不含真实数据。
+- v0.3 MVP 范围与明确非目标 `docs/design/v0.3-scope.md`：以审核闭环为唯一 MVP，明确不做内核内 UI/服务端、Web、多 `write_target`、按需归因、Windows、自动审批、外部冲销助手等（D01–D12，含重新讨论条件；文档先行，代码未开始）。
 
 ### Changed
 
