@@ -41,6 +41,13 @@ Triggered by "did behavior change?", not required on every change:
 - External notes (the Obsidian design library) never carry a copy of normative text; they hold project status and unfrozen discussion drafts only. Drafts marked as such must land in the repository before anything relies on them.
 - When two copies disagree, the one that tests or a commit can verify wins — that is this repository.
 
+### Pre-release design changes
+
+- Before the first stable release, old designs may be overturned, rewritten, or replaced outright; backward compatibility is not required. The change still lands in `docs/design/`, and the revision history or a new ADR records the reason and what was replaced.
+- This convention lives in this file and the repository docs, not in a SKILL: a SKILL describes reusable agent workflows, not project-specific design rules.
+- Breaking schema/CLI changes may bump the version directly; the same change updates docs, tests, and migration notes.
+- The audit chain, journal, and committed ledger content are not "overturnable design": they must not be deleted or rewritten. Security invariants still apply as hard constraints.
+
 ### Bilingual synchronization
 
 - User-facing documents exist in two versions: `X.md` (Chinese) and `X.en.md` (English). This covers `README`, `CONTRIBUTING`, `CHANGELOG`, and `AGENTS`.

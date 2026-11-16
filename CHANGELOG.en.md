@@ -16,6 +16,8 @@ All notable changes are recorded here. The format follows Keep a Changelog; vers
 - Advisory `DUPLICATE_SUSPECTED` warning at validation: repeated ledger entries are visible but not blocked (ADR-017).
 - ADR-014 (engine fingerprint excludes Python), ADR-015 (review digest covers transaction content), ADR-016 (draft templates), ADR-017 (duplicate warning).
 - v0.2 account-layer design draft `docs/design/v0.2-account-layer.md` plus ADR-018/019/020: contract editing, account state/reconciliation, and account-level review (design first, not implemented).
+- `AGENTS.md` now records the pre-release design convention: before the first stable release, old designs may be overturned without backward compatibility; the convention is not a SKILL.
+- Account-layer design review notes: reconciliation requires no evidence; `hard_deadline` and declared-balance differences remain open.
 - The end-to-end script `scripts/e2e_ledger.py` covers commit, external-change observation with diff, draft invalidation, and blocking commits on an invalid ledger; CI runs it on every build and a `unittest` integration case wraps it.
 
 ### Changed
