@@ -6,7 +6,8 @@
 
 ### Changed
 
-- CI 触发方式明确为 GitHub webhook → 内部 Jenkins Multibranch；构建结果回写为 commit check `LedgerKernel CI`，配置步骤见 `docs/ci-github-webhook.md`。
+- CI 触发方式明确为 GitHub webhook → 内部 Jenkins Multibranch；构建结果回写为 commit status（context `continuous-integration/jenkins/branch`），配置步骤见 `docs/ci-github-webhook.md`。
+- 新增维护者本地的 Jenkins 令牌轮换约定（`jk-token rotate`，失败关闭、先验证后吊销），凭据不进入仓库。
 
 ## [0.1.0] - 2026-11-15
 

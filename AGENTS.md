@@ -1,3 +1,5 @@
+中文 | [English](AGENTS.en.md)
+
 # LedgerKernel 库内 Agent 约定
 
 本文件约束在本仓库内工作的 Agent。它只写会改变行为或安全边界的规则；背景与设计见 `README.md`。
@@ -18,21 +20,36 @@
 6. **不提交秘密与真实数据**：不提交真实账本、`.ledger-kernel/`、API token、PAT、私钥、含个人信息的证据文件。
 7. **不削弱安全不变量**：ADR-012 增量断言、片段指纹、外部变化只观测不覆盖、失败关闭（fail-closed）等规则不得因便利性被移除。
 
+## 凭据使用
+
+- CI / Jenkins 令牌等运维凭据由维护者本地保存与轮换（见 `docs/ci-github-webhook.md` 第 4 节），不进入仓库、提交信息、构建日志或示例配置。
+- Agent 需要凭据时从维护者指定的固定位置读取，用完由维护者按该文档轮换；不得把令牌抄写到任何仓库文件或临时脚本中。
+- 只用最小权限账号；管理员凭据仅用于文档列出的运维动作。
+
 ## 文档更新规则
 
 按“行为是否变化”触发，不做逐次强制：
 
-- 公共 API、CLI、配置、schema、安装方式变化 → 更新 `README.md` 与相关 docstring。
+- 公共 API、CLI、配置、schema、安装方式变化 → 更新 `README.md` / `README.en.md` 与相关 docstring。
 - 安全不变量、不可逆决策、兼容性边界变化 → 新增/修订 ADR（本仓库 `docs/design/adr/`，或库外设计库）。
 - 仅内部重构、测试补充、注释修正 → 不要求更新 README。
-- 发布相关 → 更新 `CHANGELOG.md` 并按 `docs/release-checklist.md` 执行。
+- 发布相关 → 更新 `CHANGELOG.md` / `CHANGELOG.en.md` 并按 `docs/release-checklist.md` 执行。
+
+### 双语同步
+
+- 面向使用者的文档有两版：`X.md`（中文）与 `X.en.md`（英文），覆盖 `README`、`CONTRIBUTING`、`CHANGELOG`、`AGENTS`。
+- 任何内容改动必须在同一次改动中同时落到两版；“以后补翻译”不是合并后可以接受的状态。
+- 中文版是措辞准绳；英文版必须表达相同的规则、约束与数字，不得出现语义分歧。
+- 示例中的标识（账户名、命令、ID、配置键）两版保持逐字一致，读者可以照抄任意一版。
+- 新增面向使用者的文档时，同时创建两个文件，并在各自首行加语言切换行。
+- Agent 自身的阅读偏好（例如只读中文）不能成为不更新英文版的理由。
 
 ## 完成定义（Definition of Done）
 
 - 新增/修改行为有对应测试；测试仍使用标准库 `unittest`。
 - 本地通过：`PYTHONPATH=src python3 -m unittest discover -s tests -t .`
 - 涉及写入、恢复、外部变化的改动，额外跑：`PYTHONPATH=src python3 scripts/e2e_testassets.py --source <TestAssets>`（没有 TestAssets 时说明跳过原因）。
-- 公共行为变化已更新文档；决策变化已记录 ADR。
+- 公共行为变化已在中英两版更新文档；决策变化已记录 ADR。
 - `git status` 只包含本次相关文件；不顺手整理无关内容。
 - 不提交 `.venv/`、`__pycache__/`、构建产物或临时账本。
 
